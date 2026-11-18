@@ -106,6 +106,19 @@ func TestDoubaoSeedAudioCreateUsesTextPromptWithoutResourceHeader(t *testing.T) 
 	}
 }
 
+func TestDoubaoSeedAudioSpeedDefaultsAndConversion(t *testing.T) {
+	manifest, err := os.ReadFile("../../../plugin-packages/doubao-streaming-tts/manifest.json")
+	if err != nil { t.Fatal(err) }
+	adapter, err := LoadManifest(manifest)
+	if err != nil { t.Fatal(err) }
+	for _, tc := range []struct { speed any; want float64 }{{nil, 0}, {"", 0}, {"1", 0}, {"0.75", -25}, {"1.25", 25}} {
+		spec, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Capability: CapabilityAudio, Model: "seed-audio-1.0", Prompt: "你好", Extra: map[string]any{"audioSpeed": tc.speed}}})
+		if err != nil { t.Fatal(err) }
+		config := spec.Body.(map[string]any)["audio_config"].(map[string]any)
+		if got, exists := config["speech_rate"]; !exists || manifestFloat(got) != tc.want { t.Errorf("speed %v: speech_rate = %v, want %v", tc.speed, got, tc.want) }
+	}
+}
+
 func TestDoubaoSeedAudioCreateSendsReferenceAudioAndImage(t *testing.T) {
 	manifest, err := os.ReadFile("../../../plugin-packages/doubao-streaming-tts/manifest.json")
 	if err != nil {

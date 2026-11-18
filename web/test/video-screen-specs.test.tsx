@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ModelCapabilityEditor } from "../src/components/model-capability-editor";
 import { defaultModelCapabilityConfig, modelCapabilityConfigFor, normalizeModelCapabilityConfig, normalizeVideoValue } from "../src/lib/model-capabilities";
 import type { ModelProtocolWorkflow } from "../src/lib/model-protocols";
-import { findProtocolWorkflow, GENERIC_WORKFLOW_ID, resolveWorkflowVideoScreenSpec, updateWorkflowVideoScreenSpec } from "../src/lib/video-screen-specs";
+import { findProtocolWorkflow, GENERIC_WORKFLOW_ID, hasEmbeddedH3Aspect, resolveWorkflowVideoScreenSpec, updateWorkflowVideoScreenSpec } from "../src/lib/video-screen-specs";
 import { updateChannelModelUpstreamCapabilities } from "../src/pages/admin/components/channel-model-editor-form";
 
 const workflow: ModelProtocolWorkflow = {
@@ -15,6 +15,19 @@ const workflow: ModelProtocolWorkflow = {
     defaults: { resolution: "768p竖" },
 };
 const initial = () => resolveWorkflowVideoScreenSpec(defaultModelCapabilityConfig("autodl-comfyui", workflow.id).video!, workflow);
+
+test("H3 横竖分辨率不重复显示画面比例，独立比例模型仍可配置", () => {
+    const protocol = "shanju-h3-cinema-unified-fast";
+    const config = defaultModelCapabilityConfig(protocol, "cinema-fast-reference");
+    config.video!.resolutions = ["480p横", "480p竖", "480p(1:1)", "768p横", "768p竖", "768p(1:1)"];
+    expect(hasEmbeddedH3Aspect(protocol, config.video!.resolutions)).toBe(true);
+    const html = renderToStaticMarkup(<ModelCapabilityEditor capability="video" protocol={protocol} value={config} section="protocol" />);
+    expect(html).not.toContain("支持比例");
+    expect(html).not.toContain("默认比例");
+    expect(html).toContain("输出分辨率");
+    expect(hasEmbeddedH3Aspect("minimax-video", ["480p", "768p"])).toBe(false);
+    expect(hasEmbeddedH3Aspect(protocol, ["480p横", "768p"])).toBe(false);
+});
 
 test("removed switch and draft cannot replace the effective six choices", () => {
     for (const customSizeEnabled of [false, true]) {

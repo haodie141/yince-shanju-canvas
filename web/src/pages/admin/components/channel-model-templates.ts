@@ -117,7 +117,7 @@ export function pricingDimensions(values: PricingContext): PricingDimension[] {
         add(
             "operation",
             "生成方式",
-            video.operations.filter((operation) => ["text_to_video", "image_to_video", "video_to_video", "enhance"].includes(operation)),
+            video.operations.filter((operation) => ["text_to_video", "image_to_video", "reference_to_video", "video_to_video", "enhance"].includes(operation)),
         );
         add("resolution", "分辨率", [...video.resolutions, ...(video.fixedScreenSpec?.resolutions || [])].map(normalizeTierResolution));
         // processing 的计价合同固定声明三档（后端 videoProcessingFPSBands）；

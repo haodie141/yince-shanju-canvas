@@ -142,3 +142,18 @@ test("视频处理计价帧率档遵循固定合同，keep_source 无 fpsOptions
     expect(() => buildPricingTemplate("seconds", ["fpsBand"], values)).toThrow("维度已变更");
     expect(() => validateChannelModelPrices({ ...values, priceTiers: configured })).toThrow("不受当前参数支持");
 });
+
+test("AutoDL 全模态参考价格档可编辑并保留生成方式", () => {
+    const capabilityConfig = defaultModelCapabilityConfig("autodl-comfyui", "minimax_h3_zm_nono");
+    capabilityConfig.video!.operations = ["image_to_video", "reference_to_video"];
+    capabilityConfig.video!.resolutions = ["480p横", "480p竖", "768p横", "768p竖"];
+    const values = { ...draft(), capability: "video" as const, protocol: "autodl-comfyui", capabilityConfig };
+    const tiers = ["image_to_video", "reference_to_video"].flatMap((operation) =>
+        capabilityConfig.video!.resolutions.map((resolution) => ({ ...defaultPriceTier("advanced"), operation, resolution, billingMode: "per_second" as const, unitPrice: 0.1 })),
+    );
+    expect(priceSelectorIssues({ ...values, priceTiers: tiers })).toEqual([]);
+    expect(() => validateChannelModelPrices({ ...values, priceTiers: tiers })).not.toThrow();
+    expect(priceTierPayloadFromForm("video", tiers[4], "minimax_h3_zm_nono", capabilityConfig).selector.operation).toBe("reference_to_video");
+    capabilityConfig.video!.operations = ["image_to_video"];
+    expect(priceSelectorIssues({ ...values, priceTiers: tiers }).join()).toContain("reference_to_video");
+});

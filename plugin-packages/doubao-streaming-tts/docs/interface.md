@@ -37,7 +37,7 @@
 | `create.body.text_prompt` | `{"$ref":"request.prompt"}` |
 | `create.body.references` | `{"$omitEmpty":{"$if":{"condition":{"$gt":[{"$len":{"$ref":"request.images"}},0]},"then":{"$map":{"from":{"$ref":"request.images"},"as":"media","in":{"image_url":{"$omitEmpty":{"$if":{"condition":{"$eq":[{"$ref":"media.source.type"},"url"]},"then":{"$ref":"media.url"},"else":null}}},"image_data":{"$omitEmpty":{"$if":{"condition":{"$eq":[{"$ref":"media.source.type"},"data"]},"then":{"$dataPayload":{"$ref":"media.value"}},"else":null}}}}}},"else":{"$if":{"condition":{"$gt":[{"$len":{"$ref":"request.audios"}},0]},"then":{"$concatArrays":[{"$map":{"from":{"$ref":"request.audios"},"as":"media","in":{"audio_url":{"$omitEmpty":{"$if":{"condition":{"$eq":[{"$ref":"media.source.type"},"url"]},"then":{"$ref":"media.url"},"else":null}}},"audio_data":{"$omitEmpty":{"$if":{"condition":{"$eq":[{"$ref":"media.source.type"},"data"]},"then":{"$dataPayload":{"$ref":"media.value"}},"else":null}}}}}},{"$if":{"condition":{"$and":[{"$ref":"request.extra.audioVoice"},{"$lt":[{"$len":{"$ref":"request.audios"}},3]}]},"then":[{"speaker":{"$ref":"request.extra.audioVoice"}}],"else":[]}}]},"else":{"$if":{"condition":{"$ref":"request.extra.audioVoice"},"then":[{"speaker":{"$ref":"request.extra.audioVoice"}}],"else":null}}}}}}}` |
 | `create.body.audio_config.format` | `{"$coalesce":[{"$ref":"request.extra.audioFormat"},"mp3"]}` |
-| `create.body.audio_config.speech_rate` | `{"$omitEmpty":{"$if":{"condition":{"$ne":[{"$toFloat":{"$ref":"request.extra.audioSpeed"}},0]},"then":{"$add":[{"$multiply":[{"$toFloat":{"$ref":"request.extra.audioSpeed"}},100]},-100]},"else":null}}}` |
+| `create.body.audio_config.speech_rate` | `{"$add":[{"$multiply":[{"$if":{"condition":{"$gt":[{"$toFloat":{"$ref":"request.extra.audioSpeed"}},0]},"then":{"$toFloat":{"$ref":"request.extra.audioSpeed"}},"else":1}},100]},-100]}` |
 | `create.headers.X-Api-Request-Id` | `{"$ref":"request.extra.idempotencyKey"}` |
 
 ## Provider 扩展键
@@ -332,36 +332,34 @@
                 ]
               },
               "speech_rate": {
-                "$omitEmpty": {
-                  "$if": {
-                    "condition": {
-                      "$ne": [
-                        {
-                          "$toFloat": {
-                            "$ref": "request.extra.audioSpeed"
-                          }
-                        },
-                        0
-                      ]
-                    },
-                    "then": {
-                      "$add": [
-                        {
-                          "$multiply": [
-                            {
-                              "$toFloat": {
-                                "$ref": "request.extra.audioSpeed"
-                              }
-                            },
-                            100
-                          ]
-                        },
-                        -100
-                      ]
-                    },
-                    "else": null
-                  }
-                }
+                "$add": [
+                  {
+                    "$multiply": [
+                      {
+                        "$if": {
+                          "condition": {
+                            "$gt": [
+                              {
+                                "$toFloat": {
+                                  "$ref": "request.extra.audioSpeed"
+                                }
+                              },
+                              0
+                            ]
+                          },
+                          "then": {
+                            "$toFloat": {
+                              "$ref": "request.extra.audioSpeed"
+                            }
+                          },
+                          "else": 1
+                        }
+                      },
+                      100
+                    ]
+                  },
+                  -100
+                ]
               }
             }
           },

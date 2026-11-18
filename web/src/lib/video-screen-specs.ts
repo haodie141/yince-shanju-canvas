@@ -1,6 +1,10 @@
 import type { VideoCapabilityConfig, VideoScreenSpecConfig } from "./model-capabilities";
 import type { ModelProtocolWorkflow } from "./model-protocols";
 
+export function hasEmbeddedH3Aspect(protocol: string | undefined, resolutions: readonly string[]) {
+    return /^(shanju|yingzuo)-h3-/.test(protocol || "") && resolutions.length > 0 && resolutions.every((value) => /(?:横|竖|\(\s*1\s*:\s*1\s*\))$/i.test(value.trim()));
+}
+
 export function cleanVideoScreenSpecValues(values: readonly string[]) {
     const seen = new Set<string>();
     return values

@@ -33,7 +33,7 @@ import {
 import type { ModelProtocol, ModelProtocolWorkflow } from "@/lib/model-protocols";
 import { ImageParameterSchemaEditor, ImageParameterSizeEditor } from "@/components/image-parameter-fields";
 import { updateImageParameterSchema, resolveImageParameters, type ImageParameter } from "@/lib/image-parameters";
-import { cleanVideoScreenSpecValues, findProtocolWorkflow, resolveWorkflowVideoScreenSpec, updateWorkflowVideoScreenSpec } from "@/lib/video-screen-specs";
+import { cleanVideoScreenSpecValues, findProtocolWorkflow, hasEmbeddedH3Aspect, resolveWorkflowVideoScreenSpec, updateWorkflowVideoScreenSpec } from "@/lib/video-screen-specs";
 import { VIDEO_RESOLUTION_CAPABILITY_OPTIONS } from "@/lib/video-generation-options";
 import { Select } from "@/components/ui/base/select";
 
@@ -79,6 +79,7 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
     const storedProfile = normalizeModelCapabilityConfig(value || defaultModelCapabilityConfig(protocol, model)).video!;
     const autoDL = protocol === "autodl-comfyui";
     const profile = autoDL ? resolveWorkflowVideoScreenSpec(storedProfile, workflow) : storedProfile;
+    const embeddedAspect = hasEmbeddedH3Aspect(protocol, profile.resolutions);
     const update = (patch: Partial<VideoCapabilityConfig>) => onChange?.({ version: 1, video: { ...profile, ...patch } });
     const updateReferences = (patch: Partial<VideoCapabilityConfig["references"]>) => update({ references: { ...profile.references, ...patch } });
     const updateDuration = (patch: Partial<VideoCapabilityConfig["duration"]>) => update({ duration: { ...profile.duration, ...patch } });
@@ -217,12 +218,12 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
                             </div>
                         )}
                     </ProtocolParameterCard>
-                    <ProtocolParameterCard step="03" title="画面规格" description="控制比例、分辨率及默认输出">
+                    <ProtocolParameterCard step="03" title="画面规格" description={embeddedAspect ? "分辨率包含画面方向" : "控制比例、分辨率及默认输出"}>
                         {autoDL ? (
                             autoDLSpecFields
                         ) : (
                             <div className="admin-capability-spec-grid">
-                                <Field label="支持比例">
+                                {!embeddedAspect && <><Field label="支持比例">
                                     <Select
                                         mode="multiple"
                                         className="w-full"
@@ -234,7 +235,7 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
                                 </Field>
                                 <Field label="默认比例">
                                     <Select className="w-full" disabled={disabled} value={profile.defaultRatio} options={profile.ratios.map((item) => ({ label: item, value: item }))} onChange={(defaultRatio) => update({ defaultRatio })} />
-                                </Field>
+                                </Field></>}
                                 <Field label="输出分辨率">
                                     <Select
                                         mode="tags"
@@ -343,7 +344,7 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
                         autoDLSpecFields
                     ) : (
                         <div className="grid gap-3 sm:grid-cols-2">
-                            <Field label="画面比例">
+                            {!embeddedAspect && <><Field label="画面比例">
                                 <Select
                                     mode="multiple"
                                     className="w-full"
@@ -355,7 +356,7 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
                             </Field>
                             <Field label="默认比例">
                                 <Select className="w-full" disabled={disabled} value={profile.defaultRatio} options={profile.ratios.map((item) => ({ label: item, value: item }))} onChange={(defaultRatio) => update({ defaultRatio })} />
-                            </Field>
+                            </Field></>}
                             <Field label="输出分辨率">
                                 <Select
                                     mode="tags"

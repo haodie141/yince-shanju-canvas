@@ -6,7 +6,7 @@ import { modelProtocolSupportsTokenBilling, type ModelProtocolDefinition } from 
 import type { ChannelModel } from "@/services/api/wallet";
 import type { ModelTag } from "@/lib/model-tags";
 import { initializeImageRatioDefaults, resolveImageParameters, standardImageSizeEncoding } from "@/lib/image-parameters";
-import { findProtocolWorkflow, resolveWorkflowVideoScreenSpec } from "@/lib/video-screen-specs";
+import { findProtocolWorkflow, hasEmbeddedH3Aspect, resolveWorkflowVideoScreenSpec } from "@/lib/video-screen-specs";
 import { defaultPriceTier, legacyPriceTierToForm, normalizeUpstreamModelKey, priceTierToForm, skuSelectorFromForm, tokenRuleClockMinutes, type PriceTierFormValues, type TokenPriceRuleFormValues } from "./channel-model-price-tier-form";
 import type { PriceCurrency } from "@/services/api/user-groups";
 import { priceSelectorIssues } from "./channel-model-templates";
@@ -59,6 +59,8 @@ export function initialChannelModelValues(item: ChannelModel | null, protocols: 
     const definitions = target?.imageParameters;
     if (capabilityConfig?.image && capability === "image" && (definitions || capabilityConfig.image.parameters || standardImageSizeEncoding(target?.create)))
         capabilityConfig = { ...capabilityConfig, image: resolveImageParameters(capabilityConfig.image, definitions || [], upstreamModel, protocol, target?.create) };
+    if (capabilityConfig?.video && hasEmbeddedH3Aspect(protocol, capabilityConfig.video.resolutions))
+        capabilityConfig = { ...capabilityConfig, video: { ...capabilityConfig.video, ratios: [], defaultRatio: "" } };
     return {
         modelKey: item?.modelKey || "",
         providerModelKey: upstreamModel,
@@ -193,7 +195,7 @@ export function validateChannelModelPrices(values: Pick<ChannelModelFormValues, 
     const operations: Record<string, string[]> = {
         text: ["text_generation"],
         image: ["text_to_image", "image_to_image"],
-        video: ["text_to_video", "image_to_video", "video_to_video", ...(values.capabilityConfig?.video?.processing ? ["enhance"] : [])],
+        video: ["text_to_video", "image_to_video", "reference_to_video", "video_to_video", ...(values.capabilityConfig?.video?.processing ? ["enhance"] : [])],
         audio: [],
     };
     priceTiers.forEach((tier, index) => {

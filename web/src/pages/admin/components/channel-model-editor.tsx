@@ -292,7 +292,14 @@ export function ChannelModelEditor({
                         <Button disabled={busy} onClick={requestClose}>
                             取消
                         </Button>
-                        <Button type="primary" loading={saving} disabled={testing || protocolLoading || Boolean(protocolError) || selectorIssues.length > 0} onClick={() => void save()}>
+                        <Button type="primary" loading={saving} disabled={testing || protocolLoading || Boolean(protocolError)} onClick={() => {
+                            if (selectorIssues.length) {
+                                setActiveSection("pricing");
+                                message.warning("请先检查积分定价中的提示");
+                                return;
+                            }
+                            void save();
+                        }}>
                             {editing ? "保存修改" : "添加模型"}
                         </Button>
                     </div>

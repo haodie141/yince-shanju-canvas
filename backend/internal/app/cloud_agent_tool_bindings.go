@@ -40,6 +40,7 @@ func cloudAgentToolHandlers() map[string]cloudAgentToolHandler {
 		agenttool.GenerateMediaBatch:     {Pipeline: cloudAgentToolMedia},
 		agenttool.MediaBatchControl:      {Read: cloudAgentHandleMediaBatchControlFallback},
 		agenttool.CanvasBuildBoard:       {Write: applyCloudAgentBuildBoard, Preview: cloudAgentPreviewBuildBoard},
+		agenttool.CanvasConcatVideos:     {Read: cloudAgentHandleCanvasConcatVideos, Preview: cloudAgentPreviewCanvasConcatVideos},
 		agenttool.CanvasPreflight:        {Read: cloudAgentHandleCanvasPreflight},
 		agenttool.DramaGetContext:        {Read: cloudAgentHandleDramaGetContext},
 		agenttool.DramaAdoptCanvasMedia:  {Write: applyCloudAgentDramaAdopt, Preview: cloudAgentPreviewDramaAdopt},

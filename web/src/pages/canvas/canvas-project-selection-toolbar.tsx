@@ -8,6 +8,7 @@ import { canvasDockStyle } from "@/lib/canvas/canvas-aceternity-style";
 import { defaultToolbarPrefs, readToolbarPrefs, resolveToolbarEntries, type ToolContext, type ToolbarHandlers } from "@/lib/canvas/tool-registry";
 import type { CanvasAlignmentMode } from "@/lib/canvas/canvas-layout";
 import { useCanvasThemeStore } from "@/stores/canvas/use-canvas-theme-store";
+import { Button } from "antd";
 
 type CanvasProjectSelectionToolbarProps = {
     anchorRef: RefObject<HTMLDivElement | null>;
@@ -22,6 +23,9 @@ type CanvasProjectSelectionToolbarProps = {
     onBatchConnect: () => void;
     onCompareImages?: () => void;
     onSendSelectionToAgent: () => void;
+    onAutoConcat?: () => void;
+    onReconcat?: () => void;
+    reconcatStale?: boolean;
 };
 
 export function CanvasProjectSelectionToolbar({
@@ -37,6 +41,9 @@ export function CanvasProjectSelectionToolbar({
     onBatchConnect,
     onCompareImages,
     onSendSelectionToAgent,
+    onAutoConcat,
+    onReconcat,
+    reconcatStale,
 }: CanvasProjectSelectionToolbarProps) {
     const { t } = useTranslation();
     const theme = canvasThemes[useCanvasThemeStore((state) => state.theme)];
@@ -76,6 +83,8 @@ export function CanvasProjectSelectionToolbar({
     return (
         <CanvasSelectionToolbar anchorRef={anchorRef} containerRef={containerRef} count={count}>
             <FloatingDock items={items} size="compact" className="canvas-floating-dock" style={canvasDockStyle(theme)} ariaLabel={t("canvasPage.selectionToolbar.ariaLabel")} />
+            {selectedVideoCount >= 2 && onAutoConcat ? <Button size="small" onClick={onAutoConcat}>自动拼接视频</Button> : null}
+            {selectedVideoCount === 1 && onReconcat ? <Button size="small" onClick={onReconcat}>{reconcatStale ? "源镜头已更新 · 重新拼接" : "重新拼接"}</Button> : null}
         </CanvasSelectionToolbar>
     );
 }

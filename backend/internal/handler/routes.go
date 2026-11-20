@@ -14,6 +14,27 @@ import (
 )
 
 func RegisterTaskRoutes(r *gin.RouterGroup, svc *service.Service) {
+	r.POST("/canvas-projects/:id/concat", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		var req struct {
+			SubmissionID string   `json:"submissionId"`
+			NodeIDs      []string `json:"nodeIds"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		task, err := svc.CreateCanvasConcatTask(user.ID, c.Param("id"), req.SubmissionID, req.NodeIDs)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, task)
+	})
 	r.GET("/admin/text-replay-stats", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

@@ -136,6 +136,7 @@ const (
 	GenerateMediaBatch     = "generate_media_batch"
 	MediaBatchControl      = "media_batch_control"
 	CanvasBuildBoard       = "canvas_build_board"
+	CanvasConcatVideos     = "canvas_concat_videos"
 	CanvasPreflight        = "canvas_preflight"
 	DramaGetContext        = "drama_get_context"
 	DramaAdoptCanvasMedia  = "drama_adopt_canvas_media"
@@ -195,6 +196,7 @@ func policies() []Policy {
 		{Name: GenerateMediaBatch, Kind: KindMedia, RequiresCanvas: true},
 		{Name: MediaBatchControl, Kind: KindControl, RequiresCanvas: true, RequiresWriteMode: true},
 		{Name: CanvasBuildBoard, Kind: KindWrite, RequiresCanvas: true},
+		{Name: CanvasConcatVideos, Kind: KindWrite, RequiresCanvas: true, OutsideTransaction: true},
 		{Name: CanvasPreflight, Kind: KindRead, RequiresCanvas: true, RequiresWriteMode: true, OutsideTransaction: true},
 		{Name: DramaGetContext, Kind: KindRead, RequiresCanvas: true, RequiresDrama: true, OutsideTransaction: true},
 		{Name: DramaAdoptCanvasMedia, Kind: KindWrite, RequiresCanvas: true, RequiresDrama: true, AlwaysApprove: true},

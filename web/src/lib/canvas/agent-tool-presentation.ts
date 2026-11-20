@@ -14,6 +14,7 @@ export const AGENT_TOOL_NAMES = [
     "canvas_apply_ops",
     "canvas_arrange_nodes",
     "canvas_build_board",
+    "canvas_concat_videos",
     "canvas_create_character",
     "canvas_create_storyboard",
     "canvas_edit_batch_table",
@@ -59,6 +60,7 @@ export const AGENT_TOOL_METADATA: Record<string, AgentToolMetadataEntry> = {
     canvas_apply_ops: { summary: ({ pending }) => (pending ? "准备更新画布内容" : "画布内容已保存至服务端"), failureMessage: "更新画布内容失败" },
     model_list: { summary: "已获取可用模型", failureMessage: "获取可用模型失败" },
     canvas_create_character: { summary: ({ pending }) => (pending ? "准备创建角色卡" : "角色卡已创建并放到画布"), failureMessage: "创建角色卡失败" },
+    canvas_concat_videos: { summary: ({ pending }) => (pending ? "准备拼接视频片段" : "拼接任务已提交，成片节点已创建"), failureMessage: "视频拼接未提交" },
     // 短剧工具只在关联短剧的精修画布上出现：读取作品上下文，或把画布媒体采用为短剧的新版本（总要审批）。
     drama_get_context: { summary: "已读取短剧设定与分集", failureMessage: "读取短剧信息失败" },
     drama_adopt_canvas_media: { summary: ({ pending }) => (pending ? "准备采用到短剧" : "已采用到短剧，成为新的当前版本"), failureMessage: "采用到短剧失败" },
@@ -144,7 +146,7 @@ const AGENT_CANVAS_READ_TOOLS = new Set(["canvas_get_state", "canvas_list_node_t
 /** 非画布信息的只读工具（模型、任务、技能、偏好）。`skills_load` 是历史事件名，保留兼容。 */
 const AGENT_INFO_READ_TOOLS = new Set(["model_list", "task_get", "skill_search", "skill_market_search", "skill_read_file", "skills_load", "agent_profile_read", "drama_get_context", "canvas_preflight"]);
 const AGENT_VISION_TOOLS = new Set(["canvas_inspect_image"]);
-const AGENT_CREATE_TOOLS = new Set(["generate_media", "generate_media_batch", "canvas_build_board", "canvas_create_storyboard", "canvas_create_character", "image_annotation_render"]);
+const AGENT_CREATE_TOOLS = new Set(["generate_media", "generate_media_batch", "canvas_build_board", "canvas_concat_videos", "canvas_create_storyboard", "canvas_create_character", "image_annotation_render"]);
 const AGENT_OPERATE_TOOLS = new Set(["canvas_apply_ops", "canvas_arrange_nodes", "canvas_edit_storyboard", "canvas_edit_batch_table", "image_layer_split", "image_text_detect", "media_batch_control"]);
 
 export type AgentToolCategory = "read" | "vision" | "create" | "operate" | "other";

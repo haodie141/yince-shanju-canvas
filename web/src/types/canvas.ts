@@ -282,6 +282,12 @@ export type CanvasDramaRef = {
 };
 
 export type CanvasNodeMetadata = {
+	/** 自动成片保存源镜头顺序；任务可在离开画布后继续恢复。 */
+	concatSourceNodeIds?: string[];
+	concatSourceStorageKeys?: string[];
+	concatStale?: boolean;
+	concatSubmissionId?: string;
+	concatTaskId?: string;
     /** Credential-free editable generation contract; submitted recipes live with tasks. */
     generationSpec?: GenerationSpec;
     dramaRef?: CanvasDramaRef;

@@ -1137,6 +1137,8 @@ export function ApprovalPreviewItemView({ item, theme, onFocusNode }: { item: Re
                         ? "创建角色卡"
                         : item.operation === "plan_step"
                           ? "计划"
+                          : item.operation === "concat_video"
+                            ? "拼接"
                           : item.operation === "adopt_drama_media"
                             ? "采用到短剧"
                             : item.operation === "build_board"

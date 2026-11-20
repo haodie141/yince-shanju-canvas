@@ -34,6 +34,10 @@ func TestCloudAgentToolTableMatchesRuntimeDispatch(t *testing.T) {
 			if h.Pipeline != cloudAgentToolVision {
 				t.Errorf("%s must use vision pipeline", name)
 			}
+		case p.Write() && p.OutsideTransaction:
+			if h.Read == nil || h.Preview == nil {
+				t.Errorf("%s requires external execution and approval preview", name)
+			}
 		case p.Write():
 			if h.Write == nil || h.Preview == nil {
 				t.Errorf("%s requires both execution and approval preview", name)

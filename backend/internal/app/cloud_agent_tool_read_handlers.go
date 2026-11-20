@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"io"
 	"strings"
 	"unicode/utf8"
@@ -371,5 +372,17 @@ func cloudAgentHandleTaskGet(repo *repository.Repository, userID string, state *
 	result := cloudAgentTaskDiagnostic(repo, task)
 	result["status"] = task.Status
 	result["text"] = truncateRunes(taskResultText(task.ResultJSON), 4000)
+	if task.Type == model.TaskTypeTimelineRender && task.Status == model.TaskStatusSucceeded {
+		var rendered struct {
+			ResourceID string `json:"resourceId"`
+			DurationMs int64  `json:"durationMs"`
+		}
+		if json.Unmarshal([]byte(task.ResultJSON), &rendered) == nil && rendered.ResourceID != "" {
+			if resource, err := repo.ResourceForUser(userID, rendered.ResourceID); err == nil && resource.Status == model.ResourceStatusReady {
+				result["resourceId"] = rendered.ResourceID
+				result["durationMs"] = rendered.DurationMs
+			}
+		}
+	}
 	return result, nil
 }

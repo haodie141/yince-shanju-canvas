@@ -134,6 +134,9 @@ import { CanvasOperationChangeToast, CanvasUploadStatusToast } from "./canvas-pr
 import { getGenerationCount } from "@/lib/canvas/canvas-project-generation";
 import { canvasReferenceImageDimensions } from "@/lib/canvas/canvas-reference-image-size";
 import { cancelGenerationTask } from "@/services/api/task-center";
+import { queryGenerationTask } from "@/services/api/task-center";
+import { http } from "@/services/api/request";
+import { canvasConcatSourcesReady, orderCanvasConcatSources } from "@/lib/canvas/canvas-auto-concat";
 import { CanvasTopBar, type CanvasProjectView } from "./canvas-project-top-bar";
 import { CanvasAssetView } from "@/components/canvas/canvas-asset-view";
 import type { CanvasAssetVersion } from "@/lib/canvas/canvas-asset-catalog";
@@ -278,6 +281,8 @@ function CanvasViewportPage() {
     const [viewport, setViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
     const [size, setSize] = useState({ width: 1200, height: 720 });
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+    const [concatOrderIds, setConcatOrderIds] = useState<string[]>([]);
+    const concatRequestsRef = useRef<Set<string>>(new Set());
     const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -1463,7 +1468,6 @@ function CanvasViewportPage() {
         relatedHighlight,
         resourceReferenceByNodeId,
         selectedNodeBounds,
-        selectedVideoNodes,
         skillMentionReferences,
         superResolveNode,
         toolbarNode,
@@ -1500,6 +1504,93 @@ function CanvasViewportPage() {
         scriptEditorNodeId,
         dialogNodeId,
     });
+
+    const startCanvasConcat = useCallback(() => {
+        if (concatOrderIds.length < 2) return;
+        const output = createCanvasNode(CanvasNodeType.Video, getCanvasCenter(), {
+            status: "loading",
+            videoEditOperation: "concat",
+            concatSourceNodeIds: [...concatOrderIds],
+            concatSubmissionId: nanoid(),
+        });
+        const sources = concatOrderIds.map((id) => nodesRef.current.find((node) => node.id === id)).filter((node): node is CanvasNodeData => Boolean(node));
+        if (sources.length) {
+            const left = Math.min(...sources.map((node) => node.position.x));
+            const right = Math.max(...sources.map((node) => node.position.x + node.width));
+            const bottom = Math.max(...sources.map((node) => node.position.y + node.height));
+            output.position = { x: (left + right - output.width) / 2, y: bottom + 96 };
+        }
+        output.title = `自动成片 · ${concatOrderIds.length} 镜头`;
+        setNodes((current) => [...current, output]);
+        setSelectedNodeIds(new Set([output.id]));
+        setConcatOrderIds([]);
+        message.success("已加入自动成片；镜头全部就绪后会自动拼接");
+    }, [concatOrderIds, getCanvasCenter, message, setNodes]);
+
+    useEffect(() => {
+        if (!projectLoaded || !projectId) return;
+        let disposed = false;
+        const reconcile = async () => {
+            const pending = nodesRef.current.filter((node) => node.type === CanvasNodeType.Video && node.metadata?.concatSubmissionId && node.metadata.status === "loading");
+            for (const node of pending) {
+                const sourceIds = node.metadata?.concatSourceNodeIds || [];
+                const submissionId = node.metadata?.concatSubmissionId;
+                if (!submissionId || concatRequestsRef.current.has(submissionId)) continue;
+                if (!node.metadata?.concatTaskId && !canvasConcatSourcesReady(sourceIds, nodesRef.current)) continue;
+                concatRequestsRef.current.add(submissionId);
+                try {
+                    if (!node.metadata?.concatTaskId) {
+                        await persistLocalEdits();
+                        await saveRemoteUserDataNow(projectId);
+                        if (disposed) continue;
+                        const task = await http.post<{ id: string }>(`/canvas-projects/${encodeURIComponent(projectId)}/concat`, { submissionId, nodeIds: sourceIds });
+                        if (disposed) continue;
+                        setNodes((current) => current.map((item) => item.id === node.id ? { ...item, metadata: { ...item.metadata, concatTaskId: task.id } } : item));
+                        continue;
+                    }
+                    const task = await queryGenerationTask(node.metadata.concatTaskId);
+                    if (disposed || task.status === "queued" || task.status === "running") continue;
+                    if (task.status !== "succeeded") {
+                        setNodes((current) => current.map((item) => item.id === node.id ? { ...item, metadata: { ...item.metadata, status: "error", errorDetails: task.error || "视频拼接未完成；源镜头已保留" } } : item));
+                        continue;
+                    }
+                    const result = JSON.parse(task.resultJson || "{}") as { resourceId?: string; durationMs?: number };
+                    const resourceID = result.resourceId;
+                    if (!resourceID) throw new Error("成片任务已完成，但缺少视频资源");
+                    setNodes((current) => current.map((item) => item.id === node.id ? {
+                        ...item,
+                        metadata: { ...item.metadata, status: "success", errorDetails: undefined, storageKey: `resource:${resourceID}`, content: resourceFileUrl(resourceID), durationMs: result.durationMs, taskStatus: "succeeded", concatSourceStorageKeys: sourceIds.map((id) => current.find((source) => source.id === id)?.metadata?.storageKey || "") },
+                    } : item));
+                } catch (error) {
+                    // Network errors are retried with the same submission ID; the backend is idempotent.
+                    if (error && typeof error === "object" && "status" in error && Number(error.status) >= 400 && Number(error.status) < 500) {
+                        setNodes((current) => current.map((item) => item.id === node.id ? { ...item, metadata: { ...item.metadata, status: "error", errorDetails: error instanceof Error ? error.message : "视频拼接无法提交" } } : item));
+                    }
+                } finally {
+                    concatRequestsRef.current.delete(submissionId);
+                }
+            }
+        };
+        void reconcile();
+        const timer = window.setInterval(() => { void reconcile(); }, 3000);
+        return () => { disposed = true; window.clearInterval(timer); };
+    }, [nodes, persistLocalEdits, projectId, projectLoaded, setNodes]);
+    useEffect(() => {
+        if (!projectLoaded) return;
+        const keys = new Map(nodes.map((node) => [node.id, node.metadata?.storageKey || ""]));
+        setNodes((current) => {
+            let changed = false;
+            const next = current.map((node) => {
+                const meta = node.metadata;
+                if (!meta?.concatSourceStorageKeys || !meta.concatSourceNodeIds || meta.status !== "success") return node;
+                const stale = meta.concatSourceNodeIds.some((id, index) => keys.get(id) !== meta.concatSourceStorageKeys?.[index]);
+                if (stale === Boolean(meta.concatStale)) return node;
+                changed = true;
+                return { ...node, metadata: { ...meta, concatStale: stale } };
+            });
+            return changed ? next : current;
+        });
+    }, [nodes, projectLoaded, setNodes]);
     // 单独选中背板时没有多选包围框，用背板自身的范围承载批量连线手柄。
     const singleSelectedFrame = selectedNodeIds.size === 1 ? nodeById.get([...selectedNodeIds][0]) : undefined;
     const batchConnectionBounds = useMemo(() => {
@@ -3274,7 +3365,7 @@ function CanvasViewportPage() {
                                     anchorRef={selectionBoundsElementRef}
                                     containerRef={containerRef}
                                     count={selectedNodeBounds.count}
-                                    selectedVideoCount={selectedVideoNodes.length}
+                                    selectedVideoCount={[...selectedNodeIds].filter((nodeId) => nodeById.get(nodeId)?.type === CanvasNodeType.Video).length}
                                     mergingVideos={false}
                                     onAlign={alignSelectedNodes}
                                     onArrange={arrangeSelectedNodes}
@@ -3283,8 +3374,37 @@ function CanvasViewportPage() {
                                     onBatchConnect={() => beginBatchConnectionMode(batchSourceNodeIds)}
                                     onCompareImages={selectedNodeIds.size === 2 && selectionImages.length === 2 ? () => setComparedImageIds(selectionImages.map((node) => node.id)) : undefined}
                                     onSendSelectionToAgent={() => sendSelectionToAgent()}
+                                    onAutoConcat={() => setConcatOrderIds(orderCanvasConcatSources(selectedNodeIds, nodes, connections))}
+                                    onReconcat={selectedNodeIds.size === 1 && nodeById.get([...selectedNodeIds][0])?.metadata?.concatSourceNodeIds ? (() => {
+                                        const sourceIds = nodeById.get([...selectedNodeIds][0])?.metadata?.concatSourceNodeIds;
+                                        if (sourceIds) setConcatOrderIds([...sourceIds]);
+                                    }) : undefined}
+                                    reconcatStale={selectedNodeIds.size === 1 && Boolean(nodeById.get([...selectedNodeIds][0])?.metadata?.concatStale)}
                                 />
                             ) : null}
+
+                            <AppModal
+                                open={concatOrderIds.length > 0}
+                                title="自动拼接视频"
+                                okText="开始自动成片"
+                                okButtonProps={{ disabled: concatOrderIds.length < 2 }}
+                                onOk={startCanvasConcat}
+                                onCancel={() => setConcatOrderIds([])}
+                            >
+                                <p>按下列顺序拼接；尚未生成完毕的镜头会自动等待。可在开始前调整顺序。</p>
+                                <div className="flex flex-col gap-2 py-3">
+                                    {concatOrderIds.map((nodeId, index) => {
+                                        const source = nodes.find((node) => node.id === nodeId);
+                                        return <div key={nodeId} className="flex items-center gap-2 rounded-lg border border-white/15 px-3 py-2">
+                                            <span className="w-6 text-center">{index + 1}</span>
+                                            <span className="min-w-0 flex-1 truncate">{source?.title || "视频片段"}</span>
+                                            <span className="text-xs opacity-60">{resourceIdFromStorageKey(source?.metadata?.storageKey) ? "已就绪" : "等待生成"}</span>
+                                            <Button size="small" disabled={index === 0} onClick={() => setConcatOrderIds((current) => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</Button>
+                                            <Button size="small" disabled={index === concatOrderIds.length - 1} onClick={() => setConcatOrderIds((current) => { const next = [...current]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; return next; })}>↓</Button>
+                                        </div>;
+                                    })}
+                                </div>
+                            </AppModal>
 
                             {uploadStatus ? <CanvasUploadStatusToast status={uploadStatus} theme={theme} /> : null}
                             {lastAgentChange ? (

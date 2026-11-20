@@ -192,9 +192,10 @@ func extForMime(mime string) string {
 // Timeline 为前端 TimelineProject 快照（v2：tracks/clips 平铺）。
 // 片段通过 directMedia.storageKey=resource:<id> 引用后端资源。
 type TimelineRenderCreateRequest struct {
-	prepareOnly bool
-	ProjectID   string        `json:"projectId"`
-	Timeline    renderProject `json:"timeline"`
+	prepareOnly  bool
+	ProjectID    string        `json:"projectId"`
+	Timeline     renderProject `json:"timeline"`
+	SubmissionID string        `json:"-"`
 }
 
 type timelineRenderInput struct {
@@ -213,6 +214,11 @@ type timelineRenderResult struct {
 // CreateTimelineRenderTask 创建时间线渲染任务：本地 ffmpeg 合成，不经模型
 // 路由与计费；创建时校验快照至少包含一个可渲染媒体片段。
 func (s *Service) CreateTimelineRenderTask(userID string, req TimelineRenderCreateRequest) (*model.Task, error) {
+	if req.SubmissionID != "" {
+		if existing, err := s.repo.TaskForSubmission(userID, req.SubmissionID); err == nil {
+			return taskForOutput(*existing), nil
+		}
+	}
 	if s.IsDraining() {
 		return nil, &AppError{Status: 503, Code: 503, Message: "服务正在维护，暂不接受新的生成任务", Retryable: true}
 	}
@@ -232,10 +238,18 @@ func (s *Service) CreateTimelineRenderTask(userID string, req TimelineRenderCrea
 		Stage: "等待队列调度", Progress: 5, Prompt: "时间线渲染",
 		Provider: "local", Model: "ffmpeg", InputJSON: string(inputJSON),
 	}
+	if req.SubmissionID != "" {
+		task.CreationSubmissionID = &req.SubmissionID
+	}
 	if req.prepareOnly {
 		return &task, nil
 	}
 	if err := s.createTaskWithinStorageQuota(&task, nil, policy); err != nil {
+		if req.SubmissionID != "" {
+			if existing, lookupErr := s.repo.TaskForSubmission(userID, req.SubmissionID); lookupErr == nil {
+				return taskForOutput(*existing), nil
+			}
+		}
 		if errors.Is(err, repository.ErrActiveTaskLimit) {
 			return nil, BadAuthRequest(fmt.Sprintf("同时排队或运行的任务最多 %d 个，请等待已有任务完成", policy.Task.ActiveTaskLimit))
 		}

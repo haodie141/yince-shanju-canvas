@@ -116,6 +116,8 @@ export function CanvasProjectAssetModal({
                         const external = externalAssetSources.items.find((item) => item.id === id)?.external;
                         if (external) return externalAssetToInsertPayload(external);
                         const item = items.find((candidate) => candidate.id === id);
+                        const uploaded = pickedItems?.find((picked) => picked.id === id)?.asset;
+                        if (!item && detail && uploaded) return toInsertPayload({ id, category: normalizeAssetCategory(uploaded.category), media: uploaded });
                         if (!item && !detail && pickedItems?.some((picked) => picked.id === id && picked.asset)) {
                             const { asset } = await getRemoteAsset(id);
                             return toInsertPayload({ id, category: normalizeAssetCategory(asset.category), media: asset });

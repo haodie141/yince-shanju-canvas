@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { App, Button } from "antd";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { FileText, Images, Plus, RefreshCw } from "lucide-react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { FileText, Images, Plus, RefreshCw, Upload } from "lucide-react";
 import { CachedResourceImage } from "@/components/cached-resource-image";
 import { WorkspaceState } from "@/components/layout/workspace-state";
 import { ASSET_CATEGORY_LABELS, type AssetCategory } from "@/lib/asset-category";
 import { resourceStorageLabel } from "@/lib/canvas/resource-storage-status";
-import { loadAssetLibraryPage } from "@/services/user-data-sync";
+import { loadAssetLibraryPage, localSavedRemotePendingMessage, saveRemoteUserDataNow } from "@/services/user-data-sync";
+import { uploadLibraryVideo } from "@/services/library-video-upload";
+import { resourceIdFromStorageKey } from "@/services/api/resources";
+import { flushAssetStorePersistence, useAssetStore } from "@/stores/use-asset-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { Asset } from "@/stores/use-asset-store";
 import { assetPickerItemsToInsertPayloads, type InsertAssetPayload } from "./asset-picker-modal";
@@ -15,6 +18,9 @@ import { Select } from "@/components/ui/base/select";
 const categories: AssetCategory[] = ["material", "character", "environment", "prop", "other"];
 export function CanvasWorkspaceAssetPanel({ onInsert, onManage, onProjectAssets }: { onInsert: (payloads: InsertAssetPayload[]) => Promise<unknown>; onManage: () => void; onProjectAssets?: () => void }) {
     const { message } = App.useApp();
+    const queryClient = useQueryClient();
+    const videoInputRef = useRef<HTMLInputElement>(null);
+    const [uploadingVideo, setUploadingVideo] = useState(false);
     const userId = useUserStore((state) => state.user?.id);
     const hydrated = useUserStore((state) => state.hydrated);
     const [category, setCategory] = useState<AssetCategory>("material");
@@ -34,6 +40,41 @@ export function CanvasWorkspaceAssetPanel({ onInsert, onManage, onProjectAssets 
         enabled: Boolean(userId) && hydrated,
     });
     const assets = query.data?.pages.flatMap((page) => page.assets) ?? [];
+    const uploadVideos = async (files: FileList | null) => {
+        if (!files?.length || uploadingVideo) return;
+        setUploadingVideo(true);
+        const uploadedIds: string[] = [];
+        let failed = 0;
+        try {
+            for (const file of Array.from(files)) {
+                if (!file.type.startsWith("video/")) { failed++; continue; }
+                try {
+                    const result = await uploadLibraryVideo(file);
+                    uploadedIds.push(result.assetId);
+                } catch { failed++; }
+            }
+            if (uploadedIds.length) {
+                try {
+                    await flushAssetStorePersistence();
+                    await saveRemoteUserDataNow([]);
+                    await queryClient.invalidateQueries({ queryKey: ["canvas-workspace-assets", userId] });
+                    setCategory("material");
+                    setKind("video");
+                    const ready = uploadedIds.filter((id) => {
+                        const asset = useAssetStore.getState().assets.find((item) => item.id === id);
+                        return asset?.kind === "video" && Boolean(resourceIdFromStorageKey(asset.data.storageKey));
+                    }).length;
+                    if (ready) message.success(`${ready} 个视频已加入素材库`);
+                    if (ready < uploadedIds.length) message.warning(`${uploadedIds.length - ready} 个视频已保存在本地，等待同步完成`);
+                } catch (error) {
+                    message.warning(localSavedRemotePendingMessage(`${uploadedIds.length} 个视频已保存在本地素材库`, error));
+                }
+            }
+            if (failed) message.warning(`${failed} 个视频上传失败，请重试`);
+        } finally {
+            setUploadingVideo(false);
+        }
+    };
     const insert = async (asset: Asset) => {
         if (inserting) return;
         setInserting(asset.id);
@@ -52,6 +93,10 @@ export function CanvasWorkspaceAssetPanel({ onInsert, onManage, onProjectAssets 
                 <Images className="size-4" />
                 <strong className="text-sm">素材库</strong>
                 <span className="text-muted-foreground">{query.data?.pages[0]?.total ?? 0}</span>
+                <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(event) => { void uploadVideos(event.target.files); event.currentTarget.value = ""; }} />
+                <Button className="ml-auto" type="text" size="small" icon={<Upload className="size-4" />} loading={uploadingVideo} disabled={!userId} onClick={() => videoInputRef.current?.click()}>
+                    上传视频
+                </Button>
             </header>
             <div className="sidebar-subtabs border-b border-border p-2">
                 {categories.map((id) => (

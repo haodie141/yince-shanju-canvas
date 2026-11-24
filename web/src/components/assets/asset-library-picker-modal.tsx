@@ -17,6 +17,8 @@ import { translate } from "@/i18n";
 import type { ExternalAssetPickerReference } from "@/lib/plugins/plugin-types";
 import { flushAssetStorePersistence, useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { deleteAssetsWithRemoteSync, loadAssetLibraryPage, localSavedRemotePendingMessage, saveRemoteUserDataNow } from "@/services/user-data-sync";
+import { resourceIdFromStorageKey } from "@/services/api/resources";
+import { uploadLibraryVideo } from "@/services/library-video-upload";
 
 import "./asset-library-picker-modal.css";
 
@@ -97,7 +99,7 @@ type Props = {
     upload?: {
         accept: string;
         description: string;
-        onUpload: (files: FileList) => Promise<string[]>;
+        onUpload: (files: FileList, folderId?: string) => Promise<string[]>;
         external?: {
             accept: string;
             description: string;
@@ -152,6 +154,7 @@ export function AssetLibraryPickerModal({
     const [uploadedItems, setUploadedItems] = useState<AssetLibraryPickerItem[]>([]);
     const [working, setWorking] = useState(false);
     const [uploadingCount, setUploadingCount] = useState(0);
+    const [uploadProgress, setUploadProgress] = useState<number | null>(null);
     const [error, setError] = useState("");
     const userId = useUserStore((state) => state.user?.id);
     const sessionHydrated = useUserStore((state) => state.hydrated);
@@ -182,6 +185,46 @@ export function AssetLibraryPickerModal({
         // 切分类/翻页时保留上一页，避免加载间隙退回本地数据源、左侧分类被重置（点"角色"闪一下又跳回全部）。
         placeholderData: keepPreviousData,
     });
+    const localUpload = upload || (Boolean(userId) && !remoteKind && mediaKinds.includes("video") ? {
+        accept: "video/*",
+        description: t("library.picker.uploadVideoHint"),
+        onUpload: async (files: FileList, selectedFolderId?: string) => {
+            const videos = Array.from(files).filter((file) => file.type.startsWith("video/"));
+            if (!videos.length) throw new Error(t("library.assets.batch.chooseVideos"));
+            const ids: string[] = [];
+            let failures = 0;
+            let finishedBytes = 0;
+            const totalBytes = videos.reduce((sum, file) => sum + file.size, 0);
+            for (const file of videos) {
+                try {
+                    const result = await uploadLibraryVideo(file, {
+                        folderId: selectedFolderId,
+                        onProgress: (loaded) => setUploadProgress(totalBytes ? Math.min(99, Math.round(((finishedBytes + loaded) / totalBytes) * 100)) : 0),
+                    });
+                    ids.push(result.assetId);
+                } catch {
+                    failures++;
+                }
+                finishedBytes += file.size;
+            }
+            if (ids.length) {
+                try {
+                    await flushAssetStorePersistence();
+                    await saveRemoteUserDataNow([]);
+                    if (remoteLibrary) await remoteQuery.refetch();
+                } catch (error) {
+                    message.warning(localSavedRemotePendingMessage(t("library.assets.batch.partialLocal"), error));
+                }
+            }
+            if (failures) message.warning(t("library.picker.uploadVideoFailed", { count: failures }));
+            const readyIds = ids.filter((id) => {
+                const asset = useAssetStore.getState().assets.find((entry) => entry.id === id);
+                return asset?.kind === "video" && Boolean(resourceIdFromStorageKey(asset.data.storageKey));
+            });
+            if (readyIds.length < ids.length) message.warning(t("library.assets.batch.videosPendingSync", { count: ids.length - readyIds.length }));
+            return readyIds;
+        },
+    } : undefined);
     // 调用方的 items 只是本地缓存，不代表可插入集合（分页结果大多不在缓存里）。能接收 pickedItems 的
     // 调用方（acceptRemoteItems）允许直接选远端条目；其余调用方保持"不在 items 里就不可选"的旧约束。
     const remoteItems = useMemo<AssetLibraryPickerItem[]>(
@@ -394,10 +437,11 @@ export function AssetLibraryPickerModal({
     };
 
     const handleUpload = async (files: FileList | null) => {
-        if (!files?.length || working || (source === "local" && !upload) || (source === "plugin" && !upload?.external)) return;
+        if (!files?.length || working || (source === "local" && !localUpload) || (source === "plugin" && !upload?.external)) return;
         setWorking(true);
         setError("");
         setUploadingCount(files.length);
+        setUploadProgress(null);
         try {
             if (source === "plugin") {
                 const uploaded = await upload!.external!.onUpload(files, folderId === "all" ? undefined : folderId);
@@ -405,8 +449,18 @@ export function AssetLibraryPickerModal({
                 const ids = uploaded.map((item) => item.id);
                 if (ids.length) setSelected((current) => new Set(multiple ? [...current, ...ids] : ids.slice(-1)));
             } else {
-                const ids = await upload!.onUpload(files);
-                if (ids.length) setSelected((current) => new Set(multiple ? [...current, ...ids] : ids.slice(-1)));
+                const ids = await localUpload!.onUpload(files, folderId === "all" ? undefined : folderId);
+                if (ids.length) {
+                    if (!upload) {
+                        setCategory("all");
+                        setMediaKind("video");
+                        setKeyword("");
+                        setRemotePage(1);
+                    }
+                    const known = useAssetStore.getState().assets;
+                    setUploadedItems((current) => [...current, ...known.filter((asset) => ids.includes(asset.id) && (asset.kind === "image" || asset.kind === "video" || asset.kind === "audio" || asset.kind === "text")).map((asset) => ({ id: asset.id, title: asset.title, category: asset.category || "material", kindLabel: ASSET_PICKER_MEDIA_KIND_LABELS[asset.kind as AssetPickerMediaKind], mediaKind: asset.kind as AssetPickerMediaKind, asset }))]);
+                    setSelected((current) => new Set(multiple ? [...current, ...ids] : ids.slice(-1)));
+                }
             }
         } catch (reason) {
             setError(reason instanceof Error ? reason.message : t("library.picker.uploadFailed"));
@@ -414,6 +468,7 @@ export function AssetLibraryPickerModal({
             if (uploadInputRef.current) uploadInputRef.current.value = "";
             setWorking(false);
             setUploadingCount(0);
+            setUploadProgress(null);
         }
     };
 
@@ -463,7 +518,7 @@ export function AssetLibraryPickerModal({
               ]
             : []),
     ];
-    const activeUpload = isRecycleBin ? undefined : source === "plugin" ? upload?.external : upload;
+    const activeUpload = isRecycleBin ? undefined : source === "plugin" ? upload?.external : localUpload;
     const uploading = uploadingCount > 0;
     const refreshing = useRemoteItems && remoteQuery.isFetching;
     // 已选条目可能来自之前的分页或刚上传的素材，托盘按 ID 在所有已知来源里找回缩略图。
@@ -627,7 +682,7 @@ export function AssetLibraryPickerModal({
                                 {uploading ? <LoaderCircle className="animate-spin" /> : <Upload />}
                                 <span>
                                     <strong>{uploading ? t("library.picker.uploading", { count: uploadingCount }) : t("library.picker.upload")}</strong>
-                                    <small>{uploading ? t("library.picker.uploadingHint") : activeUpload.description}</small>
+                                    <small>{uploading ? uploadProgress === null ? t("library.picker.uploadingHint") : `${uploadProgress}%` : activeUpload.description}</small>
                                 </span>
                             </button>
                         </>

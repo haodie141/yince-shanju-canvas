@@ -4,7 +4,7 @@ import { readFileAsDataUrl, readImageMeta, formatBytes } from "@/lib/image-utils
 import { uploadMediaFile } from "@/services/file-storage";
 import { exportAssets, readAssetPackage } from "./asset-transfer";
 import { WorkspacePage, PageHeader, CollectionGrid, PaginationBar } from "@/components/layout/workspace-page";
-import { Trash2, RotateCcw, Plus, Images, FolderOpen, FileUp, Upload, Download, MoreHorizontal, Search, LayoutGrid, FolderPlus, PencilLine, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Trash2, RotateCcw, Plus, Images, FileVideo, FolderOpen, FileUp, Upload, Download, MoreHorizontal, Search, LayoutGrid, FolderPlus, PencilLine, AlertTriangle, ShieldCheck } from "lucide-react";
 import { CollectionToolbar } from "@/components/layout/collection-toolbar";
 import { Select } from "@/components/ui/base/select";
 import { AssetFilterGroup, AssetsBatchBar, AssetsEmptyState, AssetDrawer } from "./asset-library-panels";
@@ -119,7 +119,7 @@ export default function AssetsPage() {
     const [batchWorking, setBatchWorking] = useState(false);
     const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
     const [batchArchiveOpen, setBatchArchiveOpen] = useState(false);
-    const [batchUploadOpen, setBatchUploadOpen] = useState(false);
+    const [batchUploadKind, setBatchUploadKind] = useState<"image" | "video" | null>(null);
     const [folderEditor, setFolderEditor] = useState<AssetFolder | "new" | null>(null);
     const [folderName, setFolderName] = useState("");
     const [folderSaving, setFolderSaving] = useState(false);
@@ -657,7 +657,8 @@ export default function AssetsPage() {
                                     ) : (
                                         <>
                                             <Button type="primary" icon={<Plus />} onClick={openCreate}>{t("library.assets.page.create")}</Button>
-                                            <Button icon={<Images />} onClick={() => setBatchUploadOpen(true)}>{t("library.assets.page.uploadImages")}</Button>
+                                            <Button icon={<Images />} onClick={() => setBatchUploadKind("image")}>{t("library.assets.page.uploadImages")}</Button>
+                                            <Button icon={<FileVideo />} onClick={() => setBatchUploadKind("video")}>{t("library.assets.page.uploadVideos")}</Button>
                                             {arkEnabled ? (
                                                 <Button icon={<ShieldCheck />} onClick={() => navigate("/settings?section=ark-assets")}>
                                                     {t("library.assets.page.ark")}
@@ -1049,7 +1050,7 @@ export default function AssetsPage() {
                 }
             />
 
-            <AssetBatchUploadModal open={batchUploadOpen} defaultFolderId={folderFilter !== "all" && folderFilter !== "uncategorized" ? folderFilter : ""} folders={folders} onClose={() => setBatchUploadOpen(false)} onComplete={async () => { setBatchUploadOpen(false); await invalidateAssetLibrary(); }} />
+            <AssetBatchUploadModal key={batchUploadKind || "closed"} open={Boolean(batchUploadKind)} kind={batchUploadKind || "image"} defaultFolderId={folderFilter !== "all" && folderFilter !== "uncategorized" ? folderFilter : ""} folders={folders} onClose={() => setBatchUploadKind(null)} onComplete={async () => { setBatchUploadKind(null); await invalidateAssetLibrary(); }} />
 
             <Modal
                 className="library-modal library-confirm-modal"

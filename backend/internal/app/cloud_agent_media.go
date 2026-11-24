@@ -1205,9 +1205,16 @@ func completeCloudAgentMediaNode(repo *repository.Repository, userID, canvasID, 
 				return "", err
 			}
 			meta["naturalWidth"], meta["naturalHeight"] = resource.Width, resource.Height
-			if resource.Width > 0 && resource.Height > 0 {
+			if resource.Width > 0 && resource.Height > 0 && meta["manualSize"] != true && meta["locked"] != true && meta["freeResize"] != true {
 				if width, ok := node["width"].(float64); ok && width > 0 {
-					node["height"] = width * float64(resource.Height) / float64(resource.Width)
+					height := width * float64(resource.Height) / float64(resource.Width)
+					if stringValue(node["type"]) == "image" && stringValue(node["parentId"]) != "" {
+						if current, ok := node["height"].(float64); ok && current > 0 && height > current {
+							width, height = width*current/height, current
+						}
+						node["width"] = width
+					}
+					node["height"] = height
 				}
 			}
 			delete(meta, "errorDetails")

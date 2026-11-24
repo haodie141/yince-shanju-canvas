@@ -23,6 +23,7 @@ const (
 	FeaturePluginCenter          = "pluginCenter"
 	FeatureSystemPlugins         = "systemPluginsVisibleToUsers"
 	FeatureInspirationSources    = "inspirationSourcesVisible"
+	FeatureInspirationHall       = "inspirationHallEnabled"
 	FeatureTimelineTranscription = "timelineTranscription"
 	FeatureImageWorkbench        = "imageWorkbench"
 	FeatureVideoWorkbench        = "videoWorkbench"
@@ -40,6 +41,7 @@ type FeatureAvailability struct {
 	PluginCenterEnabled          bool `json:"pluginCenterEnabled"`
 	SystemPluginsVisibleToUsers  bool `json:"systemPluginsVisibleToUsers"`
 	InspirationSourcesVisible    bool `json:"inspirationSourcesVisible"`
+	InspirationHallEnabled       bool `json:"inspirationHallEnabled"`
 	TimelineTranscriptionEnabled bool `json:"timelineTranscriptionEnabled"`
 	ImageWorkbenchEnabled        bool `json:"imageWorkbenchEnabled"`
 	VideoWorkbenchEnabled        bool `json:"videoWorkbenchEnabled"`
@@ -66,6 +68,7 @@ func DefaultFeatureAvailability() FeatureAvailability {
 		PluginCenterEnabled:          true,
 		SystemPluginsVisibleToUsers:  true,
 		InspirationSourcesVisible:    true,
+		InspirationHallEnabled:       true,
 		TimelineTranscriptionEnabled: true,
 		ImageWorkbenchEnabled:        false,
 		VideoWorkbenchEnabled:        false,
@@ -136,6 +139,8 @@ func (s *Service) FeatureEnabled(feature string) (bool, error) {
 		return value.SystemPluginsVisibleToUsers, nil
 	case FeatureInspirationSources:
 		return value.InspirationSourcesVisible, nil
+	case FeatureInspirationHall:
+		return value.InspirationHallEnabled, nil
 	case FeatureTimelineTranscription:
 		return value.TimelineTranscriptionEnabled, nil
 	case FeatureImageWorkbench:
@@ -176,6 +181,8 @@ func (s *Service) RequireFeature(feature string) error {
 		return kernel.Forbidden("系统插件暂未向普通用户展示")
 	case FeatureInspirationSources:
 		return kernel.Forbidden("素材来源说明暂未开放")
+	case FeatureInspirationHall:
+		return kernel.Forbidden("灵感大厅暂未开放")
 	case FeatureTimelineTranscription:
 		return kernel.Forbidden("字幕转写暂未开放")
 	case FeatureImageWorkbench:

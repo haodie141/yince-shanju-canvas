@@ -21,10 +21,20 @@ export function agentMediaSettings(value: AgentMediaSettings): AgentMediaSetting
         imageParameters: value.imageParameters,
         quality: value.quality,
         durationSeconds: value.durationSeconds,
+        ...(value.itemDurations ? { itemDurations: value.itemDurations } : {}),
         videoGenerateAudio: value.videoGenerateAudio,
         videoWatermark: value.videoWatermark,
         videoArkPrivateAssetUpload: value.videoArkPrivateAssetUpload,
     };
+}
+
+export function agentBatchVideoDurations(detail: Record<string, unknown>): { nodeId: string; durationSeconds: number }[] {
+    const args = mediaApprovalArguments(detail);
+    if (!args || args.mode !== "video" || !Array.isArray(args.items)) return [];
+    return args.items.map((item: { nodeId?: unknown; durationSeconds?: unknown }) => ({
+        nodeId: typeof item.nodeId === "string" ? item.nodeId : "",
+        durationSeconds: typeof item.durationSeconds === "number" && item.durationSeconds > 0 ? item.durationSeconds : typeof args.durationSeconds === "number" ? args.durationSeconds : 0,
+    }));
 }
 
 function mediaApprovalArguments(detail: Record<string, unknown>): Record<string, unknown> | null {
@@ -109,7 +119,12 @@ export function agentApprovalMatchesSettings(argumentsValue: unknown, settings: 
     const detail = { toolName: batch ? "generate_media_batch" : "generate_media", arguments: args };
     const approved = agentImageApproval(detail) || agentVideoApproval(detail);
     if (!approved) return false;
+    if (settings.itemDurations) {
+        const actual = agentBatchVideoDurations(detail);
+        if (actual.length !== settings.itemDurations.length || settings.itemDurations.some((item) => !actual.some((entry) => entry.nodeId === item.nodeId && entry.durationSeconds === item.durationSeconds))) return false;
+    }
     return (["logicalModelId", "channelId", "channelModelKey", "size", "quality", "durationSeconds", "videoGenerateAudio", "videoWatermark", "videoArkPrivateAssetUpload"] as const).every((key) => {
+        if (key === "durationSeconds" && settings.itemDurations) return true;
         const left = approved[key];
         const right = settings[key];
         return (left === undefined ? "" : left) === (right === undefined ? "" : right);

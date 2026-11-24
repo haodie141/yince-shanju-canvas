@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { requestImageQuestion } from "../src/services/api/image";
+import { requestImageQuestion, requestToolResponse } from "../src/services/api/image";
 import { resolveTextWire } from "../src/services/api/text-wire";
 import { createModelChannel, defaultConfig, type AiConfig } from "../src/stores/use-config-store";
 
@@ -25,6 +25,16 @@ function systemTextConfig(protocol: string, textWire?: "chat-completion" | "resp
 }
 
 describe("text request wire", () => {
+    test("润色工具请求的输出上限进入 DeepSeek 请求体", async () => {
+        let body: Record<string, unknown> = {};
+        globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+            body = JSON.parse(String(init?.body));
+            return new Response(JSON.stringify({ choices: [{ message: { content: "完成" } }] }), { headers: { "Content-Type": "application/json" } });
+        }) as typeof fetch;
+        const result = await requestToolResponse(systemTextConfig("deepseek-chat", "chat-completion"), [{ role: "user", content: "你好" }], [], "auto", undefined, { maxOutputTokens: 4096 });
+        expect(body.max_tokens).toBe(4096);
+        expect(result.content).toBe("完成");
+    });
     test("uses the catalog wire before the protocol ID", async () => {
         expect(await resolveTextWire({ textWire: "chat-completion", interfaceType: "deepseek-chat", channelId: "system-text" })).toBe("chat-completion");
         expect(await resolveTextWire({ interfaceType: "openai-response" })).toBe("responses");

@@ -144,6 +144,8 @@ export type AiConfig = {
     imageModel: string;
     videoModel: string;
     textModel: string;
+    /** 提示词润色默认模型；留空时跟随 textModel，Agent 换模型不会改动这里。 */
+    optimizerModel: string;
     audioModel: string;
     audioVoice: string;
     audioFormat: string;
@@ -200,6 +202,7 @@ export const defaultConfig: AiConfig = {
     imageModel: "",
     videoModel: "",
     textModel: "",
+    optimizerModel: "",
     audioModel: "",
     audioVoice: "alloy",
     audioFormat: "mp3",
@@ -450,6 +453,8 @@ export function normalizeConfigSnapshot(snapshot: ConfigStoreSnapshot | undefine
     const videoModels = filterModelsByCapability(models, "video", channels);
     const textModels = filterModelsByCapability(models, "text", channels);
     const audioModels = filterModelsByCapability(models, "audio", channels);
+    // 润色模型单独保存；留空表示跟随默认文本模型，无效值同样回退为空。
+    const optimizerModel = normalizeModelOptionValue(config.optimizerModel || "", channels);
     const model = normalizeSelectedModel(config.model || config.imageModel || config.textModel, channels, models);
     return {
         config: {
@@ -462,6 +467,7 @@ export function normalizeConfigSnapshot(snapshot: ConfigStoreSnapshot | undefine
             imageModel: normalizeSelectedModel(config.imageModel || model, channels, imageModels),
             videoModel: normalizeSelectedModel(config.videoModel, channels, videoModels),
             textModel: normalizeSelectedModel(config.textModel || model, channels, textModels),
+            optimizerModel: optimizerModel && textModels.includes(optimizerModel) ? optimizerModel : "",
             audioModel: normalizeSelectedModel(config.audioModel || defaultConfig.audioModel, channels, audioModels),
             audioVoice: config.audioVoice || defaultConfig.audioVoice,
             audioFormat: config.audioFormat || defaultConfig.audioFormat,

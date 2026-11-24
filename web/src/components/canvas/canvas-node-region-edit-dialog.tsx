@@ -5,7 +5,7 @@ import { ArrowUp, Redo2, RotateCcw, SquareDashed, Undo2, X } from "lucide-react"
 import { AppModal } from "@/components/ui/product/app-modal";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { ModelPicker } from "@/components/model-picker";
-import { defaultImageParamsForModel } from "@/lib/model-selection";
+import { defaultImageParamsForModel, modelCompatibilityError, type ModelRequirements } from "@/lib/model-selection";
 import { loadRasterImage } from "@/lib/image-raster";
 import type { PixelSize } from "@/lib/canvas/image-operation-plan";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -158,7 +158,9 @@ function RegionEditor({ image, config, onClose, onConfirm }: RegionEditorProps) 
         [orderedRegions, thumbnails],
     );
     const trimmedPrompt = prompt.trim();
-    const canSubmit = Boolean(size && regions.length && trimmedPrompt);
+    const requirements: ModelRequirements = { capability: "image", input: { textCount: 1, imageCount: 1, videoCount: 0, audioCount: 0, characterCount: 0 } };
+    const referenceError = modelCompatibilityError(settings, settings.model, requirements);
+    const canSubmit = Boolean(size && regions.length && trimmedPrompt && !referenceError);
 
     const applyRegions = (next: ImageEditRegion[], previous: ImageEditRegion[]) => {
         setRegions(next);
@@ -271,6 +273,7 @@ function RegionEditor({ image, config, onClose, onConfirm }: RegionEditorProps) 
     };
 
     const submit = () => {
+        if (referenceError) return setError(referenceError);
         if (!source || !size) return;
         if (!regions.length) return setError("请先在图片上框选至少一个区域");
         if (!trimmedPrompt) return setError("请写下修改要求，可用 @区域1 指定区域");
@@ -485,6 +488,7 @@ function RegionEditor({ image, config, onClose, onConfirm }: RegionEditorProps) 
                             config={settings}
                             value={settings.model}
                             capability="image"
+                            requirements={requirements}
                             variant="creation"
                             showSelectedPrice={false}
                             showConfiguredModelName
@@ -498,7 +502,7 @@ function RegionEditor({ image, config, onClose, onConfirm }: RegionEditorProps) 
                                 onConfigChange={(key, value) => setSettings((previous) => ({ ...previous, [key]: value }))}
                             />
                             <span className="rgn-footer-spacer" />
-                            <Button className="rgn-submit" type="primary" shape="round" icon={<ArrowUp className="size-4" strokeWidth={2.4} />} disabled={!canSubmit} onClick={submit}>
+                            <Button className="rgn-submit" type="primary" shape="round" icon={<ArrowUp className="size-4" strokeWidth={2.4} />} disabled={!canSubmit} title={referenceError || undefined} onClick={submit}>
                                 生成
                             </Button>
                         </div>

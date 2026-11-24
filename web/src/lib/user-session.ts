@@ -1,4 +1,5 @@
 import { getFeatureAvailability, type AuthSessionPayload } from "@/services/api/auth";
+import { getDefaultModels, type DefaultModels } from "@/services/api/default-models";
 import { projectImageParameters, imageParametersForSpec } from "./image-parameters";
 import { getModelCatalog, type CapabilitySpec, type ModelCatalogResponse, type OptionConstraint, type PublicChannelCatalog, type PublicLogicalModel } from "@/services/api/logical-models";
 import { localForageStorage } from "@/lib/localforage-storage";
@@ -119,10 +120,19 @@ async function hydrateUserSessionData(payload: AuthSessionPayload, generation: n
             const catalog = await getModelCatalog();
             if (!isCurrentSession(generation, userId)) return;
             if (!persistedConfig) {
-                // 只有首次配置缺失时才生成能力推荐；已有配置中的空数组代表用户明确清空。
+                // 新用户优先采用管理员配置的全站默认模型；读取失败时回退到目录中的第一个可用模型。
+                const defaults = await getDefaultModels()
+                    .then((response) => response.defaults)
+                    .catch((): DefaultModels | null => null);
+                if (!isCurrentSession(generation, userId)) return;
                 const initialSystemConfig = {
                     ...defaultConfig,
                     channels: modelCatalogChannels(catalog),
+                    imageModel: defaults?.imageModel || "",
+                    videoModel: defaults?.videoModel || "",
+                    textModel: defaults?.agentTextModel || "",
+                    optimizerModel: defaults?.optimizerModel || "",
+                    audioModel: defaults?.audioModel || "",
                     imageModels: undefined,
                     videoModels: undefined,
                     textModels: undefined,

@@ -113,7 +113,7 @@ function SettingsHome({ props, theme, onOpen }: { props: AgentSettingsProps; the
     return (
         <div className="canvas-agent-settings-scroll thin-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
             <section>
-                <ThinkingLevelSlider levels={thinkingLevelsFor(thinking)} value={props.reasoningMode} resolvedLevel={resolveThinkingLevel(thinking, props.reasoningMode)} onChange={props.onReasoningModeChange} />
+                <ThinkingLevelSlider levels={thinkingLevelsFor(thinking)} value={props.reasoningMode} resolvedLevel={resolveThinkingLevel(thinking, props.reasoningMode)} showResolvedDefault onChange={props.onReasoningModeChange} />
             </section>
             <section>
                 <SettingLabel label="对话模型" hint="新运行生效" />

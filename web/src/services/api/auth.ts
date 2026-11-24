@@ -512,6 +512,11 @@ export function getFeatureAvailability() {
     return http.get<{ features: FeatureAvailability }>("/features");
 }
 
+/** 未登录访客也能读取的页面可见性开关；只包含公开安全字段。 */
+export function getPublicFeatureAvailability(signal?: AbortSignal) {
+    return http.get<{ features: Pick<FeatureAvailability, "inspirationHallEnabled" | "inspirationSourcesVisible"> }>("/public/features", { signal });
+}
+
 export function getAdminFeatureAvailability() {
     return http.get<{ features: FeatureAvailability }>("/admin/settings/features");
 }
@@ -529,6 +534,7 @@ export function updateAdminFeatureAvailability(
             | "pluginCenterEnabled"
             | "systemPluginsVisibleToUsers"
             | "inspirationSourcesVisible"
+            | "inspirationHallEnabled"
             | "imageWorkbenchEnabled"
             | "videoWorkbenchEnabled"
             | "ecommerceEnabled"

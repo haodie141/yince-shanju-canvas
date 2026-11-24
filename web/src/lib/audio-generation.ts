@@ -87,17 +87,22 @@ export function isDoubaoAudioConfig(config: AiConfig) {
     return resolveModelRequestConfig(config, config.model || config.audioModel).interfaceType === "doubao-streaming-tts";
 }
 
+export function isShanjuTTSConfig(config: AiConfig) {
+    return resolveModelRequestConfig(config, config.model || config.audioModel).interfaceType === "shanju-doubao-tts-v2";
+}
+
 export function audioVoiceOptionsForConfig(config: AiConfig) {
-    return isDoubaoAudioConfig(config) ? doubaoAudioVoiceOptions : openAIAudioVoiceOptions;
+    return isShanjuTTSConfig(config) ? [{ value: "zh_female_vv_uranus_bigtts", label: "Vivi 女声" }] : isDoubaoAudioConfig(config) ? doubaoAudioVoiceOptions : openAIAudioVoiceOptions;
 }
 
 export function audioFormatOptionsForConfig(config: AiConfig) {
-    return isDoubaoAudioConfig(config) ? doubaoAudioFormatOptions : openAIAudioFormatOptions;
+    return isShanjuTTSConfig(config) ? [{ value: "mp3", label: "MP3" }] : isDoubaoAudioConfig(config) ? doubaoAudioFormatOptions : openAIAudioFormatOptions;
 }
 
 export function normalizeAudioVoiceForConfig(config: AiConfig, value: string) {
     const options = audioVoiceOptionsForConfig(config);
     const normalized = String(value || "").trim();
+    if (isShanjuTTSConfig(config)) return options.some((item) => item.value === normalized) ? normalized : options[0].value;
     if (isDoubaoAudioConfig(config)) {
         if (!normalized || normalized === "alloy") return "";
         return normalized;

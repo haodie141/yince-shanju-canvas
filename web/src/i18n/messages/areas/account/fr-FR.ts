@@ -602,7 +602,10 @@ export const frFR: DeepStringRecord<typeof zhCN> = {
         models: {
             image: { title: "Modèle d'image par défaut", description: "Génération, retouche d'image et exploration visuelle", empty: "Aucun modèle d'image disponible dans les canaux actuels" },
             video: { title: "Modèle vidéo par défaut", description: "Texte vers vidéo, image vers vidéo et prolongement de plan", empty: "Aucun modèle vidéo disponible dans les canaux actuels" },
-            text: { title: "Modèle de texte par défaut", description: "Réécriture de prompts, scripts et texte structuré", empty: "Aucun modèle de texte disponible dans les canaux actuels" },
+            text: { title: "Modèle de texte agent par défaut", description: "Conversations de l'agent, scripts et texte structuré", empty: "Aucun modèle de texte disponible dans les canaux actuels" },
+            optimizer: { title: "Modèle de polissage par défaut", description: "Modèle utilisé pour le polissage des prompts et l'optimiseur, indépendant du modèle de l'agent", empty: "Aucun modèle de polissage disponible dans les canaux actuels" },
+            optimizerFollow: "Suivre le modèle de texte par défaut",
+            optimizerFollowHint: "Utilise le modèle de texte par défaut ci-dessus lorsqu'il n'est pas défini",
             audio: { title: "Modèle audio par défaut", description: "Génération de voix, d'effets sonores et de musique", empty: "Aucun modèle audio disponible dans les canaux actuels" },
             available: "{{count}} disponibles",
             uncategorized: "Non classé",

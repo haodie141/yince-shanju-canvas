@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { doubaoAudioVoiceOptions, isDoubaoAudioConfig, normalizeAudioSpeedValue, normalizeAudioVoiceForConfig, normalizeAudioVoiceValue } from "../src/lib/audio-generation";
+import { audioFormatOptionsForConfig, audioVoiceOptionsForConfig, doubaoAudioVoiceOptions, isDoubaoAudioConfig, normalizeAudioSpeedValue, normalizeAudioVoiceForConfig, normalizeAudioVoiceValue } from "../src/lib/audio-generation";
 
 const config = (protocol: string) =>
     ({
@@ -28,6 +28,12 @@ describe("audio speed normalization", () => {
 });
 
 describe("audio voice protocol handling", () => {
+    test("uses the supported 2.0 speaker and MP3 for Shanju TTS", () => {
+        const tts = config("shanju-doubao-tts-v2");
+        expect(normalizeAudioVoiceForConfig(tts, "alloy")).toBe("zh_female_vv_uranus_bigtts");
+        expect(audioVoiceOptionsForConfig(tts).map((item) => item.value)).toEqual(["zh_female_vv_uranus_bigtts"]);
+        expect(audioFormatOptionsForConfig(tts).map((item) => item.value)).toEqual(["mp3"]);
+    });
     test("keeps custom voice identifiers for non-OpenAI channels", () => {
         expect(normalizeAudioVoiceValue("voice_001")).toBe("voice_001");
     });

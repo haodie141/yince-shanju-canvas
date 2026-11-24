@@ -28,7 +28,7 @@ import { videoDurationOptions, type ImageCapabilityConfig, type VideoCapabilityC
 import { preserveVideoSettings as normalizeVideoValue } from "@/lib/media-settings";
 import { mediaSettingIssues } from "@/lib/media-settings";
 import { MediaSettingsNotice } from "@/components/media-settings-notice";
-import { mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
+import { mergedImageCapabilityConfig, modelCompatibilityError, type ModelRequirements } from "@/lib/model-selection";
 import { imageQualityLabel } from "@/lib/image-quality";
 import { modelQuoteDescription, modelQuoteRequest } from "@/lib/model-pricing";
 import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-models";
@@ -225,7 +225,8 @@ export function CreationComposer(props: ComposerProps) {
     const settingsError = mediaSettingIssues(props.config, props.mode, props.model)
         .map((item) => item.message)
         .join("；");
-    const canSubmit = Boolean(props.prompt.trim()) && !interactionBusy && !settingsError;
+    const referenceError = props.mode === "image" ? modelCompatibilityError(props.config, props.model, { capability: "image", input: props.modelRequirements.input }) : "";
+    const canSubmit = Boolean(props.prompt.trim()) && !interactionBusy && !settingsError && !referenceError;
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
     const priceChannel = resolveModelChannel(props.config, props.model);
     // 实际提交单数与 index.tsx 的 taskCount 同样 clamp。
@@ -272,7 +273,7 @@ export function CreationComposer(props: ComposerProps) {
     const showWorkingGlow = props.generationActive && !canSubmit;
     const placeholder = props.mode === "text" ? "描述你的故事、角色或想继续讨论的创意" : props.mode === "image" ? "描述画面、人物、场景、构图与风格" : "描述镜头内容、运动、光线与节奏";
     const emptyPlaceholder = "输入你的镜头、画面或故事。也可以添加参考图开始创作";
-    const imageReferencesSupported = props.imageProfile.references.maxImages > 0;
+    const imageReferencesSupported = props.maxReferences > 0;
     const referencesSupported = props.mode === "image" ? imageReferencesSupported : props.mode !== "video" || props.maxReferences > 0;
     const canAddMoreReferences = referencesSupported && props.attachments.length < props.maxReferences;
     const addReferenceLabel = interactionBusy ? (props.referenceReplacementBusy ? "正在替换参考图" : "生成中暂不能添加参考内容") : canAddMoreReferences ? "添加更多参考内容" : `已达到当前模型的参考内容上限（${props.maxReferences} 个）`;
@@ -591,7 +592,7 @@ export function CreationComposer(props: ComposerProps) {
                     }
                     onClick={interactionBusy ? undefined : props.onSubmit}
                     aria-label={actionLabel}
-                    title={!canSubmit && !interactionBusy ? "输入创作想法后即可生成" : actionLabel}
+                    title={referenceError || (!canSubmit && !interactionBusy ? "输入创作想法后即可生成" : actionLabel)}
                 >
                     {showWorkingGlow ? <WorkingGlow active color="var(--creation-text)" radius="var(--button-radius)" /> : null}
                     {showCost ? (
@@ -643,7 +644,7 @@ export function CreationComposer(props: ComposerProps) {
                 targetModel={modelOptionName(props.model) || props.model}
                 targetProtocol={priceChannel.modelCosts?.find((item) => item.model === modelOptionName(props.model))?.protocol || priceChannel.interfaceType}
                 config={props.config}
-                optimizerModel={props.config.textModel}
+                optimizerModel={props.config.optimizerModel || props.config.textModel}
                 references={optimizerReferences}
                 provider={props.promptOptimizerProvider}
                 onClose={() => setPromptOptimizerOpen(false)}

@@ -8,7 +8,8 @@ import { buildNodeConfig } from "../src/components/canvas/canvas-node-prompt-pan
 import { buildGenerationConfig } from "../src/lib/canvas/canvas-project-generation";
 import { modelRequestOptions } from "../src/lib/model-selection";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
-import { dramaSegmentVideoRequirements } from "../src/pages/projects/studio/segment-quote";
+import { dramaSegmentQuoteMissing, dramaSegmentVideoRequirements } from "../src/pages/projects/studio/segment-quote";
+import { dramaChoiceToModel } from "../src/lib/drama/model-choice";
 import type { DramaSegmentRequest } from "../src/services/api/drama";
 
 function systemConfig(input: {
@@ -70,6 +71,19 @@ const textVideoRequirements: ModelRequirements = {
 };
 
 describe("model request pricing", () => {
+    test("matches drama video pricing against the selected model, not the active text model", () => {
+        const config = systemConfig({ tiers: [{ selector: { operation: "image_to_video", vquality: "768p横" }, billingMode: "per_second", unitPriceMicrocredits: 150_000 }] });
+        const videoModel = config.model;
+        const capabilityConfig = defaultModelCapabilityConfig("autodl-comfyui", "agnes-video-2.5");
+        Object.assign(capabilityConfig.video!, { resolutions: ["480p横", "768p横"], defaultResolution: "480p横", duration: { selection: "range", min: 1, max: 15, step: 1, default: 5 } });
+        resolveModelChannel(config, videoModel).modelCosts![0].capabilityConfig = capabilityConfig;
+        config.model = "unrelated-text-model";
+        const requirements: ModelRequirements = { capability: "video", input: { textCount: 1, imageCount: 2, videoCount: 0, audioCount: 0, characterCount: 0 }, videoOperation: "image_to_video", videoSeconds: "4", options: { size: "16:9", vquality: "768p横", videoGenerateAudio: false } };
+        const choice = { channelId: "system-channel", modelKey: "agnes-video-2.5" };
+        expect(dramaChoiceToModel(config, "video", choice)).toBe(videoModel);
+        expect(priceTiersForCurrentSelection(resolveModelChannel(config, videoModel).modelCosts![0].logicalPriceTiers!, "video", config, requirements)).toHaveLength(0);
+        expect(dramaSegmentQuoteMissing(config, choice, requirements)).toBe(false);
+    });
     test("quotes a drama segment with its own duration, screen and audio instead of canvas defaults", () => {
         const config = systemConfig({
             tiers: [{ selector: { videoSeconds: "12", vquality: "768p", videoGenerateAudio: "true" }, billingMode: "per_second", unitPriceMicrocredits: 2_000_000 }],

@@ -397,6 +397,12 @@ func proxySystemRequestPath(c *gin.Context, svc *service.Service, user *model.Us
 		fail(c, http.StatusForbidden, err)
 		return
 	}
+	if c.Request.Method == http.MethodPost {
+		if err := svc.RequireModeratedTaskForProxy(capability); err != nil {
+			failService(c, err)
+			return
+		}
+	}
 	// 按 Token 计费的 Chat Completions 流式请求需要上游最后返回 usage 块；是否属于 Chat Completions
 	// 看实际转发的路径，不看协议 ID，插件协议（deepseek-chat 等）同样能拿到用量结算。
 	clientBody := body
@@ -535,8 +541,19 @@ func proxySystemRequestPath(c *gin.Context, svc *service.Service, user *model.Us
 		fail(c, http.StatusBadGateway, fmt.Errorf("系统渠道响应超过 %dMB 限制", policy.Request.SystemRelayResponseMB))
 		return
 	}
-	logErr := logSystemProxyCall(svc, apiCallLog(user, channel, billingOrderID, capability, protocol, c.Request.Method, path, target, body, c.GetHeader("Content-Type"), status, statusCode, time.Since(startedAt), errorText, concurrencyLimit), responseBody)
-	if status == model.ApiCallStatusSucceeded {
+	upstreamSucceeded := status == model.ApiCallStatusSucceeded
+	invalidOptimizerResult := false
+	if upstreamSucceeded && strings.HasSuffix(strings.TrimRight(path, "/"), "/chat/completions") {
+		if detail := promptOptimizerResponseError(body, responseBody, streamed); detail != "" {
+			status, errorText, invalidOptimizerResult = model.ApiCallStatusFailed, detail, true
+		}
+	}
+	callLog := apiCallLog(user, channel, billingOrderID, capability, protocol, c.Request.Method, path, target, body, c.GetHeader("Content-Type"), status, statusCode, time.Since(startedAt), errorText, concurrencyLimit)
+	if invalidOptimizerResult {
+		callLog.ErrorCode = "prompt_optimizer_invalid_response"
+	}
+	logErr := logSystemProxyCall(svc, callLog, responseBody)
+	if upstreamSucceeded {
 		if logErr != nil {
 			markSystemProxyBillingUncertain(svc, billingOrderID, "上游成功但调用日志写入失败，费用状态待核对")
 		} else if err := svc.SettleBilling(billingOrderID, ""); err != nil {
@@ -627,7 +644,11 @@ func apiCallLog(user *model.User, channel *model.ModelChannel, billingOrderID st
 
 func logSystemProxyCall(svc *service.Service, log model.ApiCallLog, responseBody []byte) error {
 	log.ResponseBody = service.SanitizeAPICallPayload(responseBody, "")
+	optimizerErrorCode := log.ErrorCode
 	svc.EnrichAPICallLog(&log, responseBody)
+	if optimizerErrorCode == "prompt_optimizer_invalid_response" {
+		log.ErrorCode = optimizerErrorCode
+	}
 	return svc.LogAPICall(log)
 }
 

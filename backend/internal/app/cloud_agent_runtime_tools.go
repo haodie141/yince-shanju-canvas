@@ -631,6 +631,12 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 			} else {
 				toolErr = BadAuthRequest("工具未获本轮权限授权")
 			}
+		case call.Function.Name == agenttool.CanvasExtractVideoTail:
+			if skillErr != nil {
+				toolErr = skillErr
+			} else {
+				result, toolErr = applyCloudAgentVideoTail(repo, run.UserID, state.Request.CanvasID, call, policy, skillResult, cloudAgentCanvasEventRecorder(run.ID, state))
+			}
 		case binding.Handler.Write != nil:
 			result, toolErr = binding.Handler.Write(repo, run.UserID, state.Request.CanvasID, call, policy, cloudAgentCanvasEventRecorder(run.ID, state))
 		case binding.Handler.Pipeline == cloudAgentToolVision:

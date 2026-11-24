@@ -63,6 +63,19 @@ describe("bounded image geometry", () => {
         }
     });
 
+    test("grouped keyframes fit their existing slot after generation and reopening", () => {
+        const node = { ...imageNode(), parentId: "scene", width: 408, height: 225, metadata: { content: "/result.png", naturalWidth: 1152, naturalHeight: 864 } };
+        const generated = preserveImageNodeSize(node, fitImageNodeSize(1152, 864));
+        expect(generated.width).toBe(300);
+        expect(generated.height).toBe(225);
+        const reopened = ensureMediaNodeMinimumSize(node);
+        expect(reopened.width).toBe(300);
+        expect(reopened.height).toBe(225);
+        expect(reopened.metadata?.naturalWidth).toBe(1152);
+        expect(reopened.metadata?.naturalHeight).toBe(864);
+        expect(ensureMediaNodeMinimumSize(reopened)).toEqual(reopened);
+    });
+
     test("actual task result projection uses decoded ratio and preserves protected display geometry", async () => {
         const adapter = apiClient.defaults.adapter;
         const requests: string[] = [];

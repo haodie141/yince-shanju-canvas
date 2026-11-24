@@ -129,6 +129,12 @@ describe("approval target already generating on the canvas", () => {
 });
 
 describe("batch generation approval settings", () => {
+    it("matches each approved video duration rather than one shared duration", () => {
+        const args = { mode: "video", logicalModelId: "video-model", size: "16:9", quality: "768p", items: [{ nodeId: "a", durationSeconds: 4 }, { nodeId: "b", durationSeconds: 8 }] };
+        const settings = { logicalModelId: "video-model", size: "16:9", quality: "768p", itemDurations: [{ nodeId: "a", durationSeconds: 4 }, { nodeId: "b", durationSeconds: 8 }] };
+        expect(agentApprovalMatchesSettings(args, settings)).toBe(true);
+        expect(agentApprovalMatchesSettings(args, { ...settings, itemDurations: [{ nodeId: "a", durationSeconds: 8 }, { nodeId: "b", durationSeconds: 8 }] })).toBe(false);
+    });
     it("shows model settings for image batches in live events and restored approvals", () => {
         const args = { mode: "image", channelId: "platform", channelModelKey: "image-model", size: "1:1", quality: "high", items: [{ nodeId: "batch-node", prompt: "第一行" }] };
         const live = agentImageApproval({ toolName: "generate_media_batch", arguments: args });

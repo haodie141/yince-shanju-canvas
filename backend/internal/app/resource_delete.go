@@ -298,14 +298,68 @@ func resourceStorageIdentity(resource *model.Resource) string {
 	return strings.Join([]string{provider, resource.Endpoint, resource.Bucket, resource.ObjectKey}, "\x00")
 }
 
-func (s *Service) deleteStoredResourceObject(userID string, resource *model.Resource) error {
+// deleteFreshResource removes a newly uploaded object and its row while holding
+// the same lock used when a share freezes or clones that object.
+func (s *Service) deleteFreshResource(resource *model.Resource) error {
+	return s.repo.WithResourceObjectLock(resource, func(repo *repository.Repository) error {
+		pinned, err := repo.CanvasShareReferencesObject(resource)
+		if err != nil {
+			return err
+		}
+		if pinned {
+			return errors.New("资源仍被分享快照引用")
+		}
+		featured, err := repo.FeaturedCanvasReferencesObject(resource)
+		if err != nil { return err }
+		if featured { return errors.New("资源仍被精选视频引用") }
+		count, err := repo.ResourceStorageReferenceCount(resource, []string{resource.ID})
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			return errors.New("资源文件仍被其他素材引用")
+		}
+		if err := s.deleteStoredResourceObjectWithRepository(repo, resource.UserID, resource); err != nil {
+			return err
+		}
+		return repo.DeleteResource(resource.UserID, resource.ID)
+	})
+}
+
+func (s *Service) deleteUnreferencedStoredResource(resource *model.Resource, remove func(*repository.Repository) error) error {
+	return s.repo.WithResourceObjectLock(resource, func(repo *repository.Repository) error {
+		pinned, err := repo.CanvasShareReferencesObject(resource)
+		if err != nil {
+			return err
+		}
+		if pinned {
+			return errors.New("资源仍被分享快照引用")
+		}
+		featured, err := repo.FeaturedCanvasReferencesObject(resource)
+		if err != nil { return err }
+		if featured { return errors.New("资源仍被精选视频引用") }
+		count, err := repo.ResourceStorageReferenceCount(resource, nil)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			return errors.New("资源文件仍被其他素材引用")
+		}
+		if remove != nil {
+			return remove(repo)
+		}
+		return s.deleteStoredResourceObjectWithRepository(repo, resource.UserID, resource)
+	})
+}
+
+func (s *Service) deleteStoredResourceObjectWithRepository(repo *repository.Repository, userID string, resource *model.Resource) error {
 	if resource == nil {
 		return errors.New("资源记录为空")
 	}
 	if strings.TrimSpace(resource.ObjectKey) == "" {
 		return fmt.Errorf("资源 %s 的存储路径为空", resource.ID)
 	}
-	protected, err := s.repo.CanvasHistoryReferencesObject(resource)
+	protected, err := repo.CanvasHistoryReferencesObject(resource)
 	if err != nil {
 		return err
 	}

@@ -44,6 +44,7 @@ describe("Agent operation feed", () => {
         const answered: Row = { id: "a1", role: "assistant", text: "那就用第一个方案", question: { question: "选哪个？" } };
         expect(buildAgentFeedSegments([plan, question, answered]).map((segment) => segment.key)).toEqual(["a1"]);
         expect(isAgentCarrierRecord(plan)).toBe(true);
+        expect(isAgentCarrierRecord({ ...plan, planItems: [] })).toBe(true);
         expect(isAgentCarrierRecord(question)).toBe(true);
         expect(isAgentCarrierRecord(answered)).toBe(false);
     });

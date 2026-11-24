@@ -5,9 +5,9 @@ import { App } from "antd";
 
 import { buildNodeGenerationContext, hydrateNodeGenerationContext } from "@/components/canvas/canvas-node-generation";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
-import { buildGenerationConfig, isGenerationCanceled } from "@/lib/canvas/canvas-project-generation";
+import { buildGenerationConfig, canvasImageReferenceLimitError, isGenerationCanceled } from "@/lib/canvas/canvas-project-generation";
 import { canvasReferenceImageDimensions } from "@/lib/canvas/canvas-reference-image-size";
-import { canvasGenerationPromptMetadata, canvasGenerationRequestFingerprint, runCanvasGenerationSubmissionOnce } from "@/lib/canvas/canvas-generation-submission";
+import { canvasGenerationPromptMetadata, canvasGenerationRequestFingerprint, restoreCanvasGenerationPreparation, runCanvasGenerationSubmissionOnce } from "@/lib/canvas/canvas-generation-submission";
 import { isGenerationTaskCapacityError } from "@/lib/canvas/canvas-generation-batch";
 import { canvasGenerationInputPrompt } from "@/lib/canvas/canvas-generation-input-prompt";
 import { resolveCanvasBatchInputContext } from "@/lib/canvas/canvas-batch-input-snapshot";
@@ -147,6 +147,12 @@ export function useCanvasGenerationExecutor({
                     const generationPrompt = options?.inputSnapshot?.context.prompt ?? canvasGenerationInputPrompt(sourceNode, mode, prompt);
                     const isPreparingEmptyImage = mode === "image" && sourceNode?.type === CanvasNodeType.Image && !sourceNode.metadata?.content;
                     const preparationController = startGenerationRequest(nodeId, nodeId, nodeId, options?.controller);
+                    const preparationStartedAt = new Date().toISOString();
+                    const finishPreparation = () => {
+                        if (markSourceStatus) setNodes((current) => current.map((node) => node.id === nodeId ? restoreCanvasGenerationPreparation(node, sourceNode, preparationStartedAt) : node));
+                        finishGenerationRequest(nodeId, preparationController);
+                        setRunningNodeId(null);
+                    };
                     setRunningNodeId(nodeId);
                     if (markSourceStatus)
                         setNodes((current) =>
@@ -160,7 +166,7 @@ export function useCanvasGenerationExecutor({
                                               status: NODE_STATUS_LOADING,
                                               taskStage: "正在准备参考素材",
                                               taskProgress: 0,
-                                              taskCreatedAt: new Date().toISOString(),
+                                              taskCreatedAt: preparationStartedAt,
                                               errorDetails: undefined,
                                               generationErrorCode: undefined,
                                               resourceReloadAvailable: undefined,
@@ -202,8 +208,7 @@ export function useCanvasGenerationExecutor({
                     } catch (error) {
                         const errorDetails = generationErrorMessage(error);
                         message.error(errorDetails);
-                        finishGenerationRequest(nodeId, preparationController);
-                        setRunningNodeId(null);
+                        finishPreparation();
                         return;
                     }
 
@@ -212,8 +217,7 @@ export function useCanvasGenerationExecutor({
                         skillExecution = await skillRuntime.prepare({ profile: "canvas", prompt: rawGenerationContext.prompt, skills: addedSkills });
                     } catch (error) {
                         message.error(error instanceof Error ? error.message : translate("canvasPage.generation.skillContextFailed"));
-                        finishGenerationRequest(nodeId, preparationController);
-                        setRunningNodeId(null);
+                        finishPreparation();
                         return;
                     }
                     let effectivePrompt = skillExecution.prompt.trim();
@@ -228,19 +232,23 @@ export function useCanvasGenerationExecutor({
                         } catch (error) {
                             const errorDetails = generationErrorMessage(error);
                             message.error(errorDetails);
-                            finishGenerationRequest(nodeId, preparationController);
-                            setRunningNodeId(null);
+                            finishPreparation();
                             return;
                         }
                     }
                     const promptLengthError = mode === "video" ? modelPromptLengthError(generationConfig, generationConfig.model, mode, effectivePrompt) : "";
                     if (promptLengthError) {
                         message.error(promptLengthError);
-                        finishGenerationRequest(nodeId, preparationController);
-                        setRunningNodeId(null);
+                        finishPreparation();
                         return;
                     }
                     const generationContext = { ...rawGenerationContext, prompt: effectivePrompt };
+                    const imageReferenceError = mode === "image" ? canvasImageReferenceLimitError(generationConfig, generationContext.referenceImages) : "";
+                    if (imageReferenceError) {
+                        message.error(imageReferenceError);
+                        finishPreparation();
+                        return;
+                    }
                     // 图生视频模型（references.minImages > 0）没有连线参考图时提前拦截：
                     // 否则任务进入队列后才被上游拒绝，积分冻结再退回，用户只看到笼统报错。
                     if (mode === "video") {
@@ -248,30 +256,26 @@ export function useCanvasGenerationExecutor({
                         const referenceImageCount = generationContext.referenceImages?.length ?? 0;
                         if (referenceImageCount < minReferenceImages) {
                             message.error(translate("canvasPage.generation.videoRequiresReferenceImages", { count: minReferenceImages }));
-                            finishGenerationRequest(nodeId, preparationController);
-                            setRunningNodeId(null);
+                            finishPreparation();
                             return;
                         }
                     }
                     if (mode === "audio" && generationContext.characterReferences.length) {
                         if (generationContext.characterReferences.length !== 1) {
                             message.error(translate("canvasPage.generation.voiceOneCharacter"));
-                            finishGenerationRequest(nodeId, preparationController);
-                            setRunningNodeId(null);
+                            finishPreparation();
                             return;
                         }
                         const voice = generationContext.resolvedCharacterVoices[0];
                         if (!voice) {
                             message.error(translate("canvasPage.generation.voiceNotBound"));
-                            finishGenerationRequest(nodeId, preparationController);
-                            setRunningNodeId(null);
+                            finishPreparation();
                             return;
                         }
                         generationConfig = { ...generationConfig, audioVoice: voice.voiceKey, audioInstructions: [voice.instructions, generationConfig.audioInstructions].filter(Boolean).join("；") };
                     }
                     if (!effectivePrompt && (mode === "text" || mode === "audio")) {
-                        finishGenerationRequest(nodeId, preparationController);
-                        setRunningNodeId(null);
+                        finishPreparation();
                         return;
                     }
 
@@ -308,15 +312,13 @@ export function useCanvasGenerationExecutor({
                     });
                     const duplicateConfirmationRequired = !options?.skipDuplicateConfirmation && !options?.retryContext && sourceNode?.metadata?.lastGenerationRequestFingerprint === requestFingerprint;
                     if (duplicateConfirmationRequired && !(await confirmDuplicateSubmission())) {
-                        finishGenerationRequest(nodeId, preparationController);
-                        setRunningNodeId(null);
+                        finishPreparation();
                         return;
                     }
 
                     const controller = preparationController;
                     if (controller.signal.aborted) {
-                        finishGenerationRequest(nodeId, controller);
-                        setRunningNodeId(null);
+                        finishPreparation();
                         return;
                     }
                     if (isPreparingEmptyImage) {

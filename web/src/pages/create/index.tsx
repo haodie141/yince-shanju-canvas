@@ -19,8 +19,9 @@ import { useExternalAssetSources } from "@/hooks/use-external-asset-sources";
 import { LEGACY_TEXT_THINKING_CONFIG, isThinkingLevel, resolveThinkingLevel, thinkingLevelsFor, type ThinkingLevel, type ThinkingRequest } from "@/lib/text-thinking";
 import { modelCapabilityConfigFor, videoDurationAllowed, videoDurationOptions } from "@/lib/model-capabilities";
 import { preserveImageSettings as normalizeImageValue, mediaSettingIssues } from "@/lib/media-settings";
-import { inferVideoOperation, modelGroupReferenceLimits, resolveCompatibleModel, mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
+import { inferVideoOperation, maxModelInputCapacity, modelCompatibilityError, modelGroupReferenceLimits, resolveCompatibleModel, mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
 import type { BackendGenerationResult } from "@/services/api/generation-task";
+import { getPublicFeatureAvailability } from "@/services/api/auth";
 import type { Skill } from "@/services/api/skills";
 import type { GenerationTask } from "@/services/api/task-center";
 import { loadCreationConversations, pendingCreationTaskIds, removeCreationConversationSnapshot, saveCreationConversations, updateCreationConversationSnapshot } from "@/services/creation-conversation-store";
@@ -91,6 +92,7 @@ import { creationVideoConfig, creationVideoSettings } from "./creation-generatio
 
 const AssetLibraryPickerModal = lazy(() => import("@/components/assets/asset-library-picker-modal").then((module) => ({ default: module.AssetLibraryPickerModal })));
 const InspirationHall = lazy(() => import("@/pages/inspirations"));
+const FeaturedCanvasGallery = lazy(() => import("./featured-canvas-gallery"));
 const loadCreationRuntime = () => import("./creation-runtime");
 type CreationRuntime = Awaited<ReturnType<typeof loadCreationRuntime>>;
 
@@ -170,6 +172,19 @@ export default function CreatePage() {
     const [conversationStorageError, setConversationStorageError] = useState("");
     const [conversationLoadAttempt, setConversationLoadAttempt] = useState(0);
     const inspirationSourcesVisible = useUserStore((state) => state.features.inspirationSourcesVisible);
+    const inspirationHallVisible = useUserStore((state) => state.features.inspirationHallEnabled);
+    // 访客没有登录态配置，读取公开开关并写回默认功能状态，避免关闭后未登录首页仍显示。
+    useEffect(() => {
+        if (userId) return;
+        const controller = new AbortController();
+        getPublicFeatureAvailability(controller.signal)
+            .then(({ features }) => {
+                if (useUserStore.getState().user) return;
+                useUserStore.getState().setFeatures({ ...useUserStore.getState().features, ...features });
+            })
+            .catch(() => {});
+        return () => controller.abort();
+    }, [userId]);
     const [conversationScope, setConversationScope] = useState<string | null>(() => (initialConversationSnapshot ? activeConversationScope : null));
     const [mode, setMode] = useState<CreationMode>(() => initialComposerPreferences.mode || defaultCreationMode);
     const [prompt, setPrompt] = useState("");
@@ -289,7 +304,12 @@ export default function CreatePage() {
     // 同名逻辑模型可能把文生视频、图生视频和全模态参考拆到不同路由。
     // 入口需要展示整个模型组的引用能力，添加素材后再由兼容路由选择具体模型。
     const videoReferenceLimits = useMemo(() => (mode === "video" ? modelGroupReferenceLimits(config, preferredModel || selectedModel, "video") || { maxImages: 0, maxVideos: 0, maxAudios: 0 } : undefined), [config, mode, preferredModel, selectedModel]);
-    const maxReferences = mode === "video" ? (videoReferenceLimits?.maxImages || 0) + (videoReferenceLimits?.maxVideos || 0) + (videoReferenceLimits?.maxAudios || 0) : mode === "image" ? imageProfile.references.maxImages : 6;
+    const maxReferences =
+        mode === "video"
+            ? (videoReferenceLimits?.maxImages || 0) + (videoReferenceLimits?.maxVideos || 0) + (videoReferenceLimits?.maxAudios || 0)
+            : mode === "image"
+              ? Math.max(maxModelInputCapacity(config, "image", "image") || 0, attachments.filter(isImageAttachment).length)
+              : 6;
     const referenceImageSize = useMemo(() => {
         const imageAttachments = attachments.filter(isImageAttachment);
         if (imageAttachments.length !== 1) return undefined;
@@ -874,6 +894,13 @@ export default function CreatePage() {
         }
         if (!selectedModel) {
             toast.warning(t("create.page.configureModel", { mode: modeLabels[mode] }));
+            releaseRetryLock();
+            releaseSubmitGate();
+            return;
+        }
+        const compatibilityError = mode === "image" ? modelCompatibilityError(config, selectedModel, { capability: "image", input: modelRequirements.input }) : "";
+        if (compatibilityError) {
+            toast.warning(compatibilityError);
             releaseRetryLock();
             releaseSubmitGate();
             return;
@@ -1593,34 +1620,41 @@ export default function CreatePage() {
                                 />
                             </section>
                             <CreationRecentCanvases onRequireLogin={() => openAuth()} />
-                            <Suspense
-                                fallback={
-                                    <div className="creation-hall-loading" role="status">
-                                        {t("create.page.hallLoading")}
-                                    </div>
-                                }
-                            >
-                                <InspirationHall onUse={(item) => startPrompt(item.mode, fillablePrompt(item))} />
+                            <Suspense fallback={null}>
+                                <FeaturedCanvasGallery />
                             </Suspense>
-                            {inspirationSourcesVisible ? (
-                                <div className="creation-source-notice">
-                                    <details>
-                                        <summary>{t("create.page.sourcesSummary")}</summary>
-                                        {declaredInspirationSources().map((source) => (
-                                            <p key={source.name ?? source.label}>
-                                                {source.notice}
-                                                {source.repository ? (
-                                                    <>
-                                                        {" "}
-                                                        <a href={source.repository} target="_blank" rel="noreferrer">
-                                                            {source.name} · {source.license}
-                                                        </a>
-                                                    </>
-                                                ) : null}
-                                            </p>
-                                        ))}
-                                    </details>
-                                </div>
+                            {inspirationHallVisible ? (
+                                <>
+                                    <Suspense
+                                        fallback={
+                                            <div className="creation-hall-loading" role="status">
+                                                {t("create.page.hallLoading")}
+                                            </div>
+                                        }
+                                    >
+                                        <InspirationHall onUse={(item) => startPrompt(item.mode, fillablePrompt(item))} />
+                                    </Suspense>
+                                    {inspirationSourcesVisible ? (
+                                        <div className="creation-source-notice">
+                                            <details>
+                                                <summary>{t("create.page.sourcesSummary")}</summary>
+                                                {declaredInspirationSources().map((source) => (
+                                                    <p key={source.name ?? source.label}>
+                                                        {source.notice}
+                                                        {source.repository ? (
+                                                            <>
+                                                                {" "}
+                                                                <a href={source.repository} target="_blank" rel="noreferrer">
+                                                                    {source.name} · {source.license}
+                                                                </a>
+                                                            </>
+                                                        ) : null}
+                                                    </p>
+                                                ))}
+                                            </details>
+                                        </div>
+                                    ) : null}
+                                </>
                             ) : null}
                         </main>
                     </>

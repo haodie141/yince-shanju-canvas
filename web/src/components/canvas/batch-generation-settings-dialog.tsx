@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { ImageSettingsPanel } from "@/components/image-settings-panel";
 import { ModelPicker } from "@/components/model-picker";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { defaultImageParamsForModel } from "@/lib/model-selection";
+import { defaultImageParamsForModel, modelCompatibilityError, type ModelRequirements } from "@/lib/model-selection";
 import { CanvasCameraControlPopover } from "./canvas-camera-control-popover";
 import type { CameraControlOptions } from "@/lib/canvas/camera-prompt-library";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
@@ -19,12 +19,13 @@ type BatchGenerationSettingsDialogProps = {
     open: boolean;
     config: AiConfig;
     rowCount: number;
+    referenceCount: number;
     concurrency: number;
     onClose: () => void;
     onConfirm: (settings: BatchGenerationSettings) => void;
 };
 
-export function BatchGenerationSettingsDialog({ open, config, rowCount, concurrency, onClose, onConfirm }: BatchGenerationSettingsDialogProps) {
+export function BatchGenerationSettingsDialog({ open, config, rowCount, referenceCount, concurrency, onClose, onConfirm }: BatchGenerationSettingsDialogProps) {
     const { t } = useTranslation();
     const theme = canvasThemes[useActiveTheme()];
     const [generationConfig, setGenerationConfig] = useState<AiConfig>(config);
@@ -46,6 +47,8 @@ export function BatchGenerationSettingsDialog({ open, config, rowCount, concurre
     };
 
     const imageModel = generationConfig.imageModel || generationConfig.model;
+    const requirements: ModelRequirements = { capability: "image", input: { textCount: 1, imageCount: referenceCount, videoCount: 0, audioCount: 0, characterCount: 0 } };
+    const referenceError = modelCompatibilityError(generationConfig, imageModel, requirements);
 
     return (
         <AppModal
@@ -69,6 +72,7 @@ export function BatchGenerationSettingsDialog({ open, config, rowCount, concurre
                         config={generationConfig}
                         value={imageModel}
                         capability="image"
+                        requirements={requirements}
                         fullWidth
                         showSelectedPrice={false}
                         onChange={handleModelChange}
@@ -101,6 +105,8 @@ export function BatchGenerationSettingsDialog({ open, config, rowCount, concurre
                     <Button
                         type="primary"
                         icon={<Play className="size-4" />}
+                        disabled={Boolean(referenceError)}
+                        title={referenceError || undefined}
                         onClick={() => onConfirm({
                             model: generationConfig.model,
                             imageModel: generationConfig.imageModel,

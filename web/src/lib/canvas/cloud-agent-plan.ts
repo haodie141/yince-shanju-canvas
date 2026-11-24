@@ -1,6 +1,6 @@
 import type { CloudAgentPlanItem, CloudAgentUserQuestion } from "@/components/canvas/canvas-cloud-agent-chat-ui";
 
-type PlanCarrier = { planItems?: CloudAgentPlanItem[]; planTerminal?: boolean };
+type PlanCarrier = { id?: string; planItems?: CloudAgentPlanItem[]; planTerminal?: boolean; planInherited?: boolean };
 
 /**
  * 从对话消息流里挑出**当前该展示的那份**待办清单。
@@ -9,10 +9,11 @@ type PlanCarrier = { planItems?: CloudAgentPlanItem[]; planTerminal?: boolean };
  * 数组里。这里必须取**最新**的那条：取第一条（`messages.find`）会把清单永远钉在第 1 轮的
  * 初始状态 —— 后面怎么推进都不刷新、全部做完也不消失（2026-09-16 实测反馈）。
  */
-export function latestAgentPlanItems(messages: readonly PlanCarrier[]): CloudAgentPlanItem[] {
+export function latestAgentPlanItems(messages: readonly PlanCarrier[], runId?: string): CloudAgentPlanItem[] {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-        const items = messages[index].planItems;
-        if (items?.length) return items;
+        const message = messages[index];
+        if (runId && message.id !== `plan-${runId}`) continue;
+        if (message.planItems) return message.planInherited ? [] : message.planItems;
     }
     return [];
 }
@@ -21,10 +22,11 @@ export function latestAgentPlanItems(messages: readonly PlanCarrier[]): CloudAge
  * 计划清单可以在运行结束后仍保留未完成项。这个标记必须和清单一起
  * 持久化，否则从本地历史恢复时，未完成项会被误显示为仍在执行。
  */
-export function latestAgentPlanTerminal(messages: readonly PlanCarrier[]): boolean {
+export function latestAgentPlanTerminal(messages: readonly PlanCarrier[], runId?: string): boolean {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-        const items = messages[index].planItems;
-        if (items?.length) return messages[index].planTerminal === true;
+        const message = messages[index];
+        if (runId && message.id !== `plan-${runId}`) continue;
+        if (message.planItems) return !message.planInherited && message.planTerminal === true;
     }
     return false;
 }

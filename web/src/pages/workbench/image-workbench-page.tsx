@@ -16,6 +16,7 @@ import { togglePromptPhrase } from "@/lib/prompt-phrases";
 import { imageQualityLabel } from "@/lib/image-quality";
 import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
+import { modelCompatibilityError } from "@/lib/model-selection";
 import { preserveImageSettings as normalizeImageValue, preserveVideoSettings as normalizeVideoValue, mediaSettingIssues } from "@/lib/media-settings";
 import { MediaSettingsNotice } from "@/components/media-settings-notice";
 import { modelQuoteRequest, requestCreditCost } from "@/lib/model-pricing";
@@ -922,7 +923,8 @@ export function WorkbenchPage({ kind }: { kind: WorkbenchKind }) {
     const settingsError = mediaSettingIssues(composerConfig, kind, selectedModel)
         .map((item) => item.message)
         .join("；");
-    const disabledReason = settingsError
+    const referenceError = kind === "image" && selectedModel ? modelCompatibilityError(config, selectedModel, { capability: "image", input: pickerRequirements.input }) : "";
+    const disabledReason = referenceError || (settingsError
         ? settingsError
         : !selectedModel
           ? `先选择${kindLabel}模型`
@@ -934,9 +936,10 @@ export function WorkbenchPage({ kind }: { kind: WorkbenchKind }) {
                 ? "请移除上传失败的素材"
                 : promptRequired && !prompt.trim()
                   ? "请填写画面描述"
-                  : undefined;
+                  : undefined);
 
     const buildBatchRequest = (): BatchRequest | string => {
+        if (referenceError) return referenceError;
         if (settingsError) return settingsError;
         const submittedPrompt = normalizeCanvasNodeMentionTokens(prompt.trim(), promptReferences);
         if (promptRequired && !submittedPrompt) return "请填写画面描述";

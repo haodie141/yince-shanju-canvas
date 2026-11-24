@@ -3,6 +3,8 @@
 package repository
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 	"yingce/backend/internal/model"
 )
@@ -23,8 +25,21 @@ func (r *Repository) CanvasShareByTokenHash(tokenHash string) (*model.CanvasShar
 	return &share, nil
 }
 
+func (r *Repository) SetCanvasShareCopyPermission(userID, projectID string, allow bool) (*model.CanvasShare, error) {
+	result := r.db.Model(&model.CanvasShare{}).Where("user_id = ? AND project_id = ?", userID, projectID).Update("allow_copy", allow)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return r.CanvasShareForProject(userID, projectID)
+}
+
 func (r *Repository) DeleteCanvasShare(userID string, projectID string) error {
-	return r.db.Delete(&model.CanvasShare{}, "user_id = ? AND project_id = ?", userID, projectID).Error
+	// 主动关闭只停用分享并保留记录；删除画布仍会直接删除分享行，二者据此区分。
+	return r.db.Model(&model.CanvasShare{}).Where("user_id = ? AND project_id = ?", userID, projectID).
+		Updates(map[string]any{"enabled": false, "revoked_at": time.Now(), "updated_at": time.Now()}).Error
 }
 
 func (r *Repository) PromptTemplates() ([]model.PromptTemplate, error) {

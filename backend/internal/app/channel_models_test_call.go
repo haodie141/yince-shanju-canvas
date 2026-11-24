@@ -97,6 +97,9 @@ func (s *Service) TestAdminChannelModel(ctx context.Context, actor *model.User, 
 		},
 		Metadata: map[string]interface{}{},
 	}
+	if string(protocol) == "doubao-streaming-tts" {
+		input.Config.AudioVoice = ""
+	}
 	if capability == "image" {
 		input.ImageCapability = imageProfile
 		if imageProfile.Parameters != nil {

@@ -1,4 +1,6 @@
 import { createClientUUID } from "@/lib/client-id";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
+import { LEGACY_TEXT_THINKING_CONFIG, resolveThinkingLevel } from "@/lib/text-thinking";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { App, Button } from "antd";
 import { appQueryClient } from "@/lib/query-client";
@@ -24,6 +26,7 @@ import { saveAs } from "file-saver";
 import { buildAgentDebugExport } from "@/lib/canvas/agent-debug-export";
 import { agentPlanVisible, latestAgentPlanItems, latestAgentPlanTerminal, pendingAgentQuestion } from "@/lib/canvas/cloud-agent-plan";
 import { latestAgentMediaBatch } from "@/lib/canvas/cloud-agent-media-batch";
+import { currentAgentTurnMessages } from "@/lib/canvas/cloud-agent-turn";
 import { AgentMediaBatchBar } from "./canvas-cloud-agent-media-batch-bar";
 import { emptyAgentContextUsage, presentAgentContextUsage, reduceAgentContextUsage, type AgentContextUsage } from "@/lib/canvas/agent-context-usage";
 import { nanoid } from "nanoid";
@@ -111,6 +114,7 @@ import { logicalModelIDForConfig, modelDisplayName, modelOptionName, resolveMode
 import { modelSupportsImageInspection, selectImageInspectionModel } from "@/lib/canvas/image-to-previs-agent";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { applyAgentCanvasPatches, refreshCanvasAfterAgent, prepareCanvasForCloudAction } from "@/services/user-data-sync";
 import { createAgentCanvasSync } from "@/services/agent-canvas-sync";
@@ -212,7 +216,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
     const outboxDispatchRef = useRef(false);
     const outboxRunEndRef = useRef("");
     const [escapeArmedAt, setEscapeArmedAt] = useState(0);
-    const [reasoningMode, setReasoningMode] = useState<AgentReasoningMode>("off");
+    const [reasoningMode, setReasoningMode] = useState<AgentReasoningMode>("auto");
     const [profileView, setProfileView] = useState<AgentProfileView | null>(null);
     const [profileLoading, setProfileLoading] = useState(false);
     const [profileSaving, setProfileSaving] = useState(false);
@@ -244,6 +248,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
     }, [curationState.curation?.enabled]);
     const [busy, setBusy] = useState(false);
     const [approvalSubmitting, setApprovalSubmitting] = useState(false);
+    const [staleApprovalId, setStaleApprovalId] = useState("");
     const [undoStates, setUndoStates] = useState<Record<string, AgentCanvasUndoState>>({});
     const undoRequestsRef = useRef(new Set<string>());
     const [exporting, setExporting] = useState(false);
@@ -284,10 +289,11 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
         conversationAutosaveRef.current = null;
     };
     const [planMinimized, setPlanMinimized] = useState(false);
-    const planItems = useMemo(() => latestAgentPlanItems(messages), [messages]);
-    const planTerminal = useMemo(() => latestAgentPlanTerminal(messages), [messages]);
+    const turnMessages = useMemo(() => currentAgentTurnMessages(messages, run), [messages, run]);
+    const planItems = useMemo(() => latestAgentPlanItems(turnMessages, run?.id), [turnMessages, run?.id]);
+    const planTerminal = useMemo(() => latestAgentPlanTerminal(turnMessages, run?.id), [turnMessages, run?.id]);
     const planVisible = agentPlanVisible(planItems);
-    const mediaBatch = useMemo(() => latestAgentMediaBatch(messages), [messages]);
+    const mediaBatch = useMemo(() => latestAgentMediaBatch(turnMessages, run?.id), [turnMessages, run?.id]);
     const pendingQuestion = useMemo(() => pendingAgentQuestion(messages), [messages]);
     const [scenePresets, setScenePresets] = useState<SkillPreset[]>([]);
     const [presetApplyingId, setPresetApplyingId] = useState("");
@@ -867,10 +873,12 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
         };
     }, [userId, accountScope, historyRestoreAttempt]);
 
+    const pendingDraftSavesRef = useRef(new Set<string>());
     useEffect(() => {
         if (!historyHydrated || !pendingHydrated || !userId || hydratedAccount.current !== `${userId}:${accountScope}`) return;
         let active = true;
         let refreshing = false;
+        if (canvasId && useCanvasStore.getState().getDraftProject(canvasId)) pendingDraftSavesRef.current.add(canvasId);
         let timer: ReturnType<typeof setTimeout>;
         const controller = new AbortController();
         setCloudHistoryReady(false);
@@ -880,6 +888,11 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
             refreshing = true;
             if (!background) setCloudHistoryLoading(true);
             try {
+                if (pendingDraftSavesRef.current.has(canvasId)) {
+                    await prepareCanvasForCloudAction(canvasId);
+                    if (!active || !accountIsCurrent() || cloudLiveState.current.canvasId !== canvasId) return;
+                    pendingDraftSavesRef.current.delete(canvasId);
+                }
                 const cache = conversationSnapshots.current;
                 const selected = cache.find((item) => item.id === cloudLiveState.current.activeConversationId);
                 const selectedId = selected ? cloudAgentConversationServerId(selected) : undefined;
@@ -1448,7 +1461,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
                 const input = {
                     canvasId,
                     prompt: value,
-                    reasoningMode: settings.reasoningMode,
+                    reasoningMode: resolveThinkingLevel(modelCapabilityConfigFor(agentConfig, effectiveModel).text?.thinking || LEGACY_TEXT_THINKING_CONFIG, settings.reasoningMode) || settings.reasoningMode,
                     profileRevision: profileView.revision,
                     model: modelOptionName(effectiveModel) || undefined,
                     ...(logicalModelId ? { logicalModelId } : requestConfig.channelId ? { channelId: requestConfig.channelId, channelModelKey: modelOptionName(effectiveModel) || undefined } : {}),
@@ -1740,6 +1753,11 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
         const runId = run.id;
         const approvalId = approval.approvalId;
         const scope = conversationScope;
+        const prepareStaleRetry = () => {
+            if (decision !== "reject" || staleApprovalId !== approvalId) return;
+            setPrompt((current) => current.trim() ? current : "请重新读取当前画布，针对刚才未完成的生成重新发起审批，保留原来的目标节点和生成要求。申请审批前先核对当前参考素材，不要重复提交已生成的任务。");
+            void appMessage.info("过期审批已结束，请检查输入框内容并发送，让 Agent 重新发起审批");
+        };
         approvalRequestRef.current = approvalId;
         // 拒绝会结束本轮：排队消息暂停，不在拒绝后自动开新一轮。
         if (decision === "reject") pauseOutbox("rejected");
@@ -1752,6 +1770,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
             if (!accountIsCurrent() || currentScope.current !== scope) return;
             await decideAgentApproval(runId, approvalId, decision, approval.reason, AbortSignal.timeout(15_000), mediaSettings);
             if (accountIsCurrent() && currentScope.current === scope) {
+                prepareStaleRetry();
                 setApproval((current) => (current?.approvalId === approvalId ? null : current));
                 setRun((current) =>
                     current?.id === runId && current.status === "waiting_approval" && (!current.approval || current.approval.approvalId === approvalId)
@@ -1777,18 +1796,24 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
                     setApproval(approvalStateFromRun(snapshot.run));
                     setConnectionEpoch((value) => value + 1);
                     setCloudRefreshEpoch((value) => value + 1);
+                    if (snapshot.run.status === "rejected") prepareStaleRetry();
                     return;
                 }
                 const decided = snapshot.run.events?.some(
                     (event) => event.type === "approval_decided" && event.payload.approvalId === approvalId && event.payload.decision === decision && (!mediaSettings || agentApprovalMatchesSettings(event.payload.arguments, mediaSettings)),
                 );
                 if (decided) {
+                    prepareStaleRetry();
                     setApproval((current) => (current?.approvalId === approvalId ? null : current));
                     setRun(snapshot.run);
                     return;
                 }
             } catch {
                 // Preserve the pending approval so the same decision can be retried.
+            }
+            if (decision === "approve" && (cause as { reason?: string })?.reason === "agent_approval_snapshot_conflict") {
+                setStaleApprovalId(approvalId);
+                return;
             }
             setMessages((current) => appendAgentError(current, `approval-error-${Date.now()}`, cause, "审批未确认，请重试"));
         } finally {
@@ -2379,7 +2404,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
         return parts.join(" · ");
     };
 
-    const showPendingRetry = Boolean(pendingRetryText) && !retryingPending;
+    const showPendingRetry = Boolean(pendingRetryText) && !retryingPending && !busy;
     const outboxTray =
         outbox.items.length || showPendingRetry ? (
             <AgentOutboxTray
@@ -2595,6 +2620,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
                                         approvalTargetGenerating={approvalTargetGenerating}
                                         approvalSubmitting={approvalSubmitting}
                                         approvalBlockedReason={approvalBlockedReason}
+                                        approvalStale={approval?.approvalId === staleApprovalId}
                                         onApprovalReasonChange={(reason) => setApproval((current) => (current ? { ...current, reason } : current))}
                                         onApprove={(settings) => void submitApproval("approve", settings)}
                                         onReject={() => void submitApproval("reject")}

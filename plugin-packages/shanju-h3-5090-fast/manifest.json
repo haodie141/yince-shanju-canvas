@@ -1,0 +1,409 @@
+{
+  "apiVersion": "yingce.plugin/v1",
+  "id": "shanju-h3-5090-fast",
+  "name": "Shanju H3 5090 Fast",
+  "version": "1.0.0",
+  "author": "Shanju",
+  "description": "5090 集群旗舰极速版，支持参考图片和参考音频",
+  "documentation": "参考模式支持图片和 WAV 音频；当前上游最多 1 段音频，以后台能力上限为准。",
+  "enabled": true,
+  "runtime": {},
+  "permissions": [
+    "generation.run",
+    "media.read"
+  ],
+  "configuration": {
+    "fields": [
+      {
+        "name": "apiKey",
+        "type": "secret",
+        "label": "API Key",
+        "required": true
+      }
+    ]
+  },
+  "contributes": {
+    "providers": [
+      {
+        "id": "shanju-h3-5090-fast",
+        "label": "Shanju H3 5090 Fast",
+        "capabilities": [
+          "video"
+        ],
+        "scopes": [
+          "admin.system-channel",
+          "user.custom-channel",
+          "canvas",
+          "creation"
+        ],
+        "baseUrl": "https://api.shanju.media",
+        "auth": {
+          "type": "bearer",
+          "field": "apiKey"
+        },
+        "parameters": [
+          {
+            "name": "prompt",
+            "type": "string",
+            "required": true,
+            "mapping": "prompt"
+          },
+          {
+            "name": "duration",
+            "type": "integer",
+            "mapping": "duration"
+          },
+          {
+            "name": "resolution",
+            "type": "string",
+            "mapping": "resolution"
+          },
+          {
+            "name": "images",
+            "type": "media[]",
+            "mapping": "image"
+          },
+          {
+            "name": "audios",
+            "type": "media[]",
+            "mapping": "reference_audio",
+            "description": "参考模式 PCM WAV 音频，数量由后台模型设置控制。"
+          }
+        ],
+        "create": {
+          "method": "POST",
+          "path": "/api/v1/video/cinema-fast",
+          "contentType": "multipart/form-data",
+          "contentTypeTemplate": {
+            "$if": {
+              "condition": {
+                "$or": [
+                  {
+                    "$gt": [
+                      {
+                        "$len": {
+                          "$ref": "request.images"
+                        }
+                      },
+                      0
+                    ]
+                  },
+                  {
+                    "$gt": [
+                      {
+                        "$len": {
+                          "$ref": "request.audios"
+                        }
+                      },
+                      0
+                    ]
+                  }
+                ]
+              },
+              "else": "application/json",
+              "then": "multipart/form-data"
+            }
+          },
+          "headers": {
+            "Idempotency-Key": {
+              "$ref": "request.extra.idempotencyKey"
+            }
+          },
+          "body": {
+            "duration": {
+              "$ref": "request.duration"
+            },
+            "mode": {
+              "$if": {
+                "condition": {
+                  "$or": [
+                    {
+                      "$gt": [
+                        {
+                          "$len": {
+                            "$ref": "request.images"
+                          }
+                        },
+                        0
+                      ]
+                    },
+                    {
+                      "$gt": [
+                        {
+                          "$len": {
+                            "$ref": "request.audios"
+                          }
+                        },
+                        0
+                      ]
+                    }
+                  ]
+                },
+                "else": "text",
+                "then": {
+                  "$if": {
+                    "condition": {
+                      "$or": [
+                        {
+                          "$gt": [
+                            {
+                              "$len": {
+                                "$filter": {
+                                  "as": "m",
+                                  "from": {
+                                    "$ref": "request.images"
+                                  },
+                                  "where": {
+                                    "$eq": [
+                                      {
+                                        "$ref": "m.role"
+                                      },
+                                      "first_frame"
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            0
+                          ]
+                        },
+                        {
+                          "$gt": [
+                            {
+                              "$len": {
+                                "$filter": {
+                                  "as": "m",
+                                  "from": {
+                                    "$ref": "request.images"
+                                  },
+                                  "where": {
+                                    "$eq": [
+                                      {
+                                        "$ref": "m.role"
+                                      },
+                                      "last_frame"
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            0
+                          ]
+                        }
+                      ]
+                    },
+                    "else": "reference",
+                    "then": {
+                      "$if": {
+                        "condition": {
+                          "$and": [
+                            {
+                              "$gt": [
+                                {
+                                  "$len": {
+                                    "$filter": {
+                                      "as": "m",
+                                      "from": {
+                                        "$ref": "request.images"
+                                      },
+                                      "where": {
+                                        "$eq": [
+                                          {
+                                            "$ref": "m.role"
+                                          },
+                                          "first_frame"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                0
+                              ]
+                            },
+                            {
+                              "$gt": [
+                                {
+                                  "$len": {
+                                    "$filter": {
+                                      "as": "m",
+                                      "from": {
+                                        "$ref": "request.images"
+                                      },
+                                      "where": {
+                                        "$eq": [
+                                          {
+                                            "$ref": "m.role"
+                                          },
+                                          "last_frame"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                0
+                              ]
+                            }
+                          ]
+                        },
+                        "else": {
+                          "$if": {
+                            "condition": {
+                              "$gt": [
+                                {
+                                  "$len": {
+                                    "$filter": {
+                                      "as": "m",
+                                      "from": {
+                                        "$ref": "request.images"
+                                      },
+                                      "where": {
+                                        "$eq": [
+                                          {
+                                            "$ref": "m.role"
+                                          },
+                                          "last_frame"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                0
+                              ]
+                            },
+                            "else": "first_frame",
+                            "then": "last_frame"
+                          }
+                        },
+                        "then": "first_last"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "optimize_prompt": false,
+            "prompt": {
+              "$ref": "request.prompt"
+            },
+            "resolution": {
+              "$ref": "request.resolution"
+            }
+          },
+          "files": [
+            {
+              "name": "image",
+              "source": {
+                "$sortByOrder": {
+                  "$filter": {
+                    "as": "m",
+                    "from": {
+                      "$ref": "request.images"
+                    },
+                    "where": {
+                      "$and": [
+                        {
+                          "$not": {
+                            "$eq": [
+                              {
+                                "$ref": "m.role"
+                              },
+                              "first_frame"
+                            ]
+                          }
+                        },
+                        {
+                          "$not": {
+                            "$eq": [
+                              {
+                                "$ref": "m.role"
+                              },
+                              "last_frame"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "first_image",
+              "source": {
+                "$first": {
+                  "$filter": {
+                    "as": "m",
+                    "from": {
+                      "$ref": "request.images"
+                    },
+                    "where": {
+                      "$eq": [
+                        {
+                          "$ref": "m.role"
+                        },
+                        "first_frame"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "last_image",
+              "source": {
+                "$first": {
+                  "$filter": {
+                    "as": "m",
+                    "from": {
+                      "$ref": "request.images"
+                    },
+                    "where": {
+                      "$eq": [
+                        {
+                          "$ref": "m.role"
+                        },
+                        "last_frame"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "reference_audio",
+              "source": {
+                "$sortByOrder": {
+                  "$ref": "request.audios"
+                }
+              }
+            }
+          ]
+        },
+        "poll": {
+          "method": "GET",
+          "path": "/api/v1/video/result/{{taskId}}"
+        },
+        "response": {
+          "taskIdPaths": [
+            "data.task_id"
+          ],
+          "statusPaths": [
+            "data.status"
+          ],
+          "errorPaths": [
+            "data.failure.message"
+          ],
+          "messagePaths": [
+            "data.failure.message",
+            "msg"
+          ],
+          "resultPaths": [
+            "data.results"
+          ],
+          "resultKind": "video",
+          "resultEphemeral": true
+        }
+      }
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { App, Button, Skeleton } from "antd";
 import { Switch } from "@/pages/admin/ui/controls";
-import { AlertTriangle, ArrowUpRight, Boxes, Clapperboard, Coins, CornerDownRight, History, ImageIcon, MonitorCog, PlugZap, Quote, RadioTower, RefreshCw, ShieldCheck, ShoppingBag, SlidersHorizontal, Video, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Boxes, Clapperboard, Coins, CornerDownRight, History, ImageIcon, MonitorCog, PlugZap, Quote, RadioTower, RefreshCw, ShieldCheck, ShoppingBag, SlidersHorizontal, Sparkles, Video, Wallet } from "lucide-react";
 
 import { Link } from "react-router";
 
@@ -18,6 +18,7 @@ type FeatureKey =
     | "creditsEnabled"
     | "customChannelsEnabled"
     | "inspirationSourcesVisible"
+    | "inspirationHallEnabled"
     | "frontendModelsEnabled"
     | "pluginCenterEnabled"
     | "systemPluginsVisibleToUsers"
@@ -56,6 +57,7 @@ const editableFeatureKeys: FeatureKey[] = [
     "creditsEnabled",
     "customChannelsEnabled",
     "inspirationSourcesVisible",
+    "inspirationHallEnabled",
     "imageWorkbenchEnabled",
     "videoWorkbenchEnabled",
     "ecommerceEnabled",
@@ -174,11 +176,20 @@ const featureGroups: FeatureGroup[] = [
         icon: <SlidersHorizontal className="size-4" aria-hidden="true" />,
         rows: [
             {
-                key: "inspirationSourcesVisible",
-                title: "素材来源署名",
+                key: "inspirationHallEnabled",
+                title: "灵感大厅",
                 location: "创作首页 · 灵感",
-                description: "显示灵感素材的来源说明和来源筛选。",
-                icon: <Quote className="size-4" aria-hidden="true" />,
+                description: "关闭后首页不再展示灵感大厅整块内容；来源署名和来源筛选同时隐藏。",
+                icon: <Sparkles className="size-4" aria-hidden="true" />,
+                children: [
+                    {
+                        key: "inspirationSourcesVisible",
+                        title: "素材来源署名",
+                        location: "创作首页 · 灵感",
+                        description: "显示灵感素材的来源说明和来源筛选。",
+                        icon: <Quote className="size-4" aria-hidden="true" />,
+                    },
+                ],
             },
         ],
     },
@@ -528,6 +539,7 @@ function toEditablePayload(features: FeatureAvailability) {
         creditsEnabled: features.creditsEnabled,
         customChannelsEnabled: features.customChannelsEnabled,
         inspirationSourcesVisible: features.inspirationSourcesVisible,
+        inspirationHallEnabled: features.inspirationHallEnabled,
         imageWorkbenchEnabled: features.imageWorkbenchEnabled,
         videoWorkbenchEnabled: features.videoWorkbenchEnabled,
         ecommerceEnabled: features.ecommerceEnabled,
@@ -555,6 +567,7 @@ function parseFeatureAvailability(value: unknown): FeatureAvailability {
         creditsEnabled: record.creditsEnabled as boolean,
         customChannelsEnabled: record.customChannelsEnabled as boolean,
         inspirationSourcesVisible: record.inspirationSourcesVisible as boolean,
+        inspirationHallEnabled: record.inspirationHallEnabled as boolean,
         imageWorkbenchEnabled: record.imageWorkbenchEnabled as boolean,
         videoWorkbenchEnabled: record.videoWorkbenchEnabled as boolean,
         ecommerceEnabled: record.ecommerceEnabled as boolean,

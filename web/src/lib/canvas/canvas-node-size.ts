@@ -16,8 +16,13 @@ export function fitImageNodeSize(width: number, height: number, maxWidth: number
 
 /** 异步产物回填只更新媒体；用户在等待期间确定的显示尺寸仍然有效。 */
 export function preserveImageNodeSize(node: CanvasNodeData | null | undefined, suggested: { width: number; height: number }) {
-    return node && (node.metadata?.manualSize || node.metadata?.locked || node.metadata?.freeResize)
-        ? { width: node.width, height: node.height } : suggested;
+    if (node && (node.metadata?.manualSize || node.metadata?.locked || node.metadata?.freeResize)) return { width: node.width, height: node.height };
+    if (node?.parentId && node.width > 0 && node.height > 0 && suggested.width > 0 && suggested.height > 0) {
+        if (Math.abs(node.width / node.height - suggested.width / suggested.height) < 1e-9) return { width: node.width, height: node.height };
+        const scale = Math.min(1, node.width / suggested.width, node.height / suggested.height);
+        return { width: suggested.width * scale, height: suggested.height * scale };
+    }
+    return suggested;
 }
 
 /** 素材使用有界预览框，极宽文字/极窄装饰不能把整组撑大；文件比例由 object-contain 保留。 */
@@ -116,8 +121,9 @@ export function ensureMediaNodeMinimumSize(node: CanvasNodeData) {
         const natural = metadata?.naturalWidth && metadata.naturalHeight
             ? (metadata.imageLayerMaterial ? fitImageMaterialNodeSize(metadata.naturalWidth, metadata.naturalHeight) : fitImageNodeSize(metadata.naturalWidth, metadata.naturalHeight))
             : null;
-        const size = natural || (!metadata?.content && metadata?.size ? imageNodeSizeFromRatio(metadata.size) : null)
+        const suggested = natural || (!metadata?.content && metadata?.size ? imageNodeSizeFromRatio(metadata.size) : null)
             || (node.width > 0 && node.height > 0 ? fitImageNodeSize(node.width, node.height) : NODE_DEFAULT_SIZE[CanvasNodeType.Image]);
+        const size = preserveImageNodeSize(node, suggested);
         if (size.width === node.width && size.height === node.height && title === node.title) return node;
         return { ...node, title, width: size.width, height: size.height, position: { x: node.position.x + node.width / 2 - size.width / 2, y: node.position.y + node.height / 2 - size.height / 2 } };
     }

@@ -1972,6 +1972,16 @@ paths:
           description: 信封 data 仅包含 welcomeEnabled 布尔值，默认 true；Cache-Control 为 no-store
         "500":
           description: 配置读取失败
+  /public/features:
+    get:
+      tags: [meta]
+      security: []
+      summary: 读取未登录页面可见性开关
+      responses:
+        "200":
+          description: 信封 data.features 仅包含 inspirationHallEnabled 与 inspirationSourcesVisible 两个布尔值；Cache-Control 为 no-store
+        "500":
+          description: 配置读取失败
   /public/inspirations/feed:
     get:
       tags: [inspirations]

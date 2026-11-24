@@ -232,6 +232,7 @@ export function useCanvasBatchTable({ nodesRef, connectionsRef, assets, setNodes
         updateRow,
         batchGenDialogOpen: batchGenDialog.open,
         batchGenDialogRowCount: batchGenDialog.pending?.rows.length ?? 0,
+        batchGenDialogReferenceCount: Math.max(0, ...(batchGenDialog.pending?.rows || []).map((row) => row.inputNodeIds.filter(Boolean).length)),
         batchGenDialogConcurrency: batchGenDialog.pending?.concurrency ?? 1,
         batchGenDialogConfig: dialogConfig,
         closeBatchGenDialog,

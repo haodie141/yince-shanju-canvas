@@ -895,6 +895,31 @@
   },
   {
     "function": {
+      "description": "从当前画布已保存的视频节点提取最后一帧，创建可继续作为图片参考的画布节点；不调用生成模型、不扣生成积分。先读取画布确定视频节点，结果返回新图片节点ID。按画布权限执行，不能提取未就绪或其他用户的视频。",
+      "name": "canvas_extract_video_tail",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "imageNodeId": {
+            "description": "新图片节点ID，必须在画布中尚未使用",
+            "type": "string"
+          },
+          "videoNodeId": {
+            "description": "当前画布的视频节点ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "videoNodeId",
+          "imageNodeId"
+        ],
+        "type": "object"
+      }
+    },
+    "type": "function"
+  },
+  {
+    "function": {
       "description": "根据图片节点尺寸和标注点生成透明 PNG 标注参考图。保存到当前用户的资源存储，不修改画布；返回当前运行的临时参考ID与有效期，作为编辑流程的第二参考图。",
       "name": "image_annotation_render",
       "parameters": {

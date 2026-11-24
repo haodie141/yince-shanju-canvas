@@ -36,8 +36,8 @@ import { Kbd } from "@/components/ui/base/kbd";
 import { ModelPicker } from "@/components/model-picker";
 import { ThinkingLevelSlider } from "@/components/thinking-level-slider";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
-import { LEGACY_TEXT_THINKING_CONFIG, THINKING_LEVEL_LABELS, resolveThinkingLevel, thinkingLevelsFor } from "@/lib/text-thinking";
-import { agentImageApproval, agentVideoApproval, agentApprovalModel } from "@/lib/canvas/agent-media-approval";
+import { LEGACY_TEXT_THINKING_CONFIG, resolveThinkingLevel, thinkingLevelsFor, thinkingRequestLabel } from "@/lib/text-thinking";
+import { agentImageApproval, agentVideoApproval, agentApprovalModel, agentBatchVideoDurations, agentMediaSettings } from "@/lib/canvas/agent-media-approval";
 import { mediaSettingIssues } from "@/lib/media-settings";
 import { agentApprovalPresentation } from "@/lib/canvas/agent-approval-presentation";
 import { CanvasAgentImageApprovalSettings } from "./canvas-agent-image-approval-settings";
@@ -148,6 +148,7 @@ export const AgentLauncher = memo(function AgentLauncher({
                     "canvas-agent-launcher fixed z-[var(--z-panel-floating)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35",
                     dragging && "is-dragging",
                     collapsed && "is-collapsed",
+                    (collapsed || appearance.avatarType === "orb") && "is-static-icon",
                     avatarLoading && "is-loading",
                     reducedMotion && "is-reduced-motion",
                     bodyHitOnly && "is-body-hit",
@@ -170,7 +171,7 @@ export const AgentLauncher = memo(function AgentLauncher({
                 {hitInset ? <span className="canvas-agent-launcher-hit" aria-hidden="true" style={{ inset: `${hitInset.top * 100}% ${hitInset.side * 100}% ${hitInset.bottom * 100}%` }} {...pointerHandlers} /> : null}
                 {showBuiltinPoster ? <img src="/doll/mascot-idle.webp" className="canvas-agent-launcher-poster" alt="" aria-hidden="true" draggable={false} width={320} height={288} /> : null}
                 {collapsed ? (
-                    <AgentOrb state={agentOrbStateForAvatar(avatarState)} size={30} color="#7164f6" />
+                    <img src="/agent-entry-v2.svg" alt="" draggable={false} width={40} height={40} />
                 ) : !appearanceResolved ? null : live ? (
                     <Live2DAvatar
                         url={live2DModelURL(appearance.live2dResourceId, appearance.live2dEntry)}
@@ -183,7 +184,9 @@ export const AgentLauncher = memo(function AgentLauncher({
                     />
                 ) : mediaURL && !mediaError ? (
                     <AgentAvatarVideo src={mediaURL} loop={!["completed", "failed", "cancelled", "rejected"].includes(avatarState)} paused={hidden} onReady={() => setReadyBundleURL(bundleManifestURL)} onError={() => setMediaError(true)} />
-                ) : bundleManifestLoading ? null : (
+                ) : bundleManifestLoading ? null : appearance.avatarType === "orb" ? (
+                    <img src="/agent-entry-v2.svg" alt="" draggable={false} width={76} height={76} />
+                ) : (
                     <AgentOrb state={agentOrbStateForAvatar(avatarState)} size={60} color="#7164f6" />
                 )}
                 {avatarLoading ? (
@@ -647,6 +650,7 @@ export function AgentConversation({
     approvalTargetGenerating,
     approvalSubmitting,
     approvalBlockedReason,
+    approvalStale,
     onFocusNode,
     onUndo,
     undoStates,
@@ -676,6 +680,7 @@ export function AgentConversation({
     approvalSubmitting: boolean;
     /** 审批卡暂时不能提交的原因；见 ApprovalCard.blockedReason。 */
     approvalBlockedReason?: string;
+    approvalStale?: boolean;
     onFocusNode?: (nodeId: string) => void;
     onUndo?: (target: AgentCanvasUndoTarget) => void;
     undoStates?: Record<string, AgentCanvasUndoState>;
@@ -827,6 +832,7 @@ export function AgentConversation({
                             theme={theme}
                             submitting={approvalSubmitting}
                             blockedReason={approvalBlockedReason}
+                            stale={approvalStale}
                             targetGenerating={approvalTargetGenerating}
                             onFocusNode={onFocusNode}
                             onReasonChange={onApprovalReasonChange}
@@ -889,7 +895,8 @@ export function ComposerControls({
     const thinkingAnchor = usePopoverAnchorAlign(thinkingOpen);
     const thinking = modelCapabilityConfigFor(config, selectedModel).text?.thinking || LEGACY_TEXT_THINKING_CONFIG;
     const levels = thinkingLevelsFor(thinking);
-    const thinkingLabel = reasoningMode === "auto" ? "默认" : reasoningMode === "deep" ? "深入" : THINKING_LEVEL_LABELS[reasoningMode];
+    const resolvedThinking = resolveThinkingLevel(thinking, reasoningMode);
+    const thinkingLabel = thinkingRequestLabel(reasoningMode, resolvedThinking);
     const permissionVisual = agentPermissionVisual(permissionMode);
     const PermissionIcon = permissionVisual.icon;
     return (
@@ -917,7 +924,7 @@ export function ComposerControls({
                     arrow={false}
                     content={
                         <div className="agent-thinking-popover">
-                            <ThinkingLevelSlider levels={levels} value={reasoningMode} resolvedLevel={resolveThinkingLevel(thinking, reasoningMode)} onChange={onReasoningModeChange} />
+                            <ThinkingLevelSlider levels={levels} value={reasoningMode} resolvedLevel={resolvedThinking} showResolvedDefault onChange={onReasoningModeChange} />
                         </div>
                     }
                 >
@@ -964,6 +971,7 @@ export function ApprovalCard({
     theme,
     submitting,
     blockedReason,
+    stale,
     targetGenerating,
     onFocusNode,
     onReasonChange,
@@ -976,6 +984,7 @@ export function ApprovalCard({
     submitting: boolean;
     /** 暂时不能提交的原因（连接未就绪、画布上有别的 Agent）。和“正在提交”分开：没有请求在路上时不显示转圈。 */
     blockedReason?: string;
+    stale?: boolean;
     /** 目标节点已在画布上直接生成：禁用“同意执行”，等待后端关闭本次审批。 */
     targetGenerating?: CanvasNodeData;
     onFocusNode?: (nodeId: string) => void;
@@ -987,6 +996,9 @@ export function ApprovalCard({
     const [mediaSettings, setMediaSettings] = useState<AgentMediaSettings>();
     const imageApproval = agentImageApproval(approval.detail);
     const videoApproval = agentVideoApproval(approval.detail);
+    const action = agentApprovalPresentation(approval.detail);
+    const batchVideo = Boolean(videoApproval && action.kind === "media_batch");
+    const batchDurations = batchVideo ? (mediaSettings?.itemDurations || agentBatchVideoDurations(approval.detail).map((item) => ({ ...item, durationSeconds: item.durationSeconds || Number(action.items.find((entry) => entry.nodeId === item.nodeId)?.details?.find((detail) => /^时长[：:]/.test(detail))?.match(/\d+/)?.[0] || 0) }))) : [];
     const effectiveConfig = useEffectiveConfig();
     const currentSettings = mediaSettings || imageApproval || videoApproval;
     const mediaMode = videoApproval ? "video" : "image";
@@ -1013,7 +1025,7 @@ export function ApprovalCard({
                   .map((item) => item.message)
                   .join("；")
             : "";
-    const action = agentApprovalPresentation(approval.detail);
+    const batchDurationError = batchVideo && batchDurations.some((item) => !Number.isInteger(item.durationSeconds) || item.durationSeconds <= 0) ? "请为每条视频填写有效时长" : "";
     return (
         <section className="canvas-agent-approval-card" aria-label={action.title}>
             <div className="canvas-agent-approval-header">
@@ -1045,11 +1057,15 @@ export function ApprovalCard({
             {imageApproval ? (
                 <CanvasAgentImageApprovalSettings initial={imageApproval} value={mediaSettings} onChange={setMediaSettings} theme={theme} disabled={submitting} />
             ) : videoApproval ? (
-                <CanvasAgentVideoApprovalSettings initial={videoApproval} value={mediaSettings} onChange={setMediaSettings} theme={theme} disabled={submitting} />
+                <CanvasAgentVideoApprovalSettings initial={videoApproval} value={mediaSettings} onChange={(next) => setMediaSettings(batchVideo ? { ...next, durationSeconds: undefined, itemDurations: batchDurations } : next)} theme={theme} disabled={submitting} batch={batchVideo} />
             ) : null}
+            {batchVideo ? <div className="space-y-2">{batchDurations.map((item, index) => <label key={item.nodeId} className="flex items-center justify-between gap-3 text-xs" style={{ color: theme.node.text }}>
+                <span>{action.items.find((entry) => entry.nodeId === item.nodeId)?.nodeTitle || `视频 ${index + 1}`}</span>
+                <span><input type="number" min={1} step={1} value={item.durationSeconds || ""} disabled={submitting} onChange={(event) => setMediaSettings({ ...agentMediaSettings(mediaSettings || videoApproval!), durationSeconds: undefined, itemDurations: batchDurations.map((entry) => entry.nodeId === item.nodeId ? { ...entry, durationSeconds: Number(event.target.value) } : entry) })} className="w-16 rounded border border-current bg-transparent px-2 py-1" /> 秒</span>
+            </label>)}</div> : null}
             {(imageApproval || videoApproval) && action.kind === "media_batch" ? (
                 <p className="canvas-agent-approval-description" style={{ color: theme.node.muted }}>
-                    模型与规格修改应用于本批次全部项目；修改视频时长会统一各项时长，提交前会重新校验模型能力与费用。
+                    模型与规格修改应用于本批次全部项目；视频时长可逐条调整，提交前会重新校验模型能力与费用。
                 </p>
             ) : null}
             <button type="button" className="canvas-agent-approval-reason-toggle" aria-expanded={showReason} onClick={() => setShowReason((value) => !value)} disabled={submitting}>
@@ -1070,26 +1086,30 @@ export function ApprovalCard({
                 <p className="canvas-agent-approval-description" role="status" style={{ color: theme.node.muted }}>
                     你已在节点《{targetGenerating.title || "未命名节点"}》上直接提交了生成，Agent 不会重复提交；本次审批会自动关闭。
                 </p>
+            ) : stale ? (
+                <p className="canvas-agent-approval-description" role="alert" style={{ color: theme.node.muted }}>
+                    画布内容有更新，本次审批需要重新确认。点击下方按钮后，系统会结束旧审批并准备重新申请；画布草稿会保留，本次未提交生成任务。
+                </p>
             ) : blockedReason && !submitting ? (
                 <p className="canvas-agent-approval-description" role="status" style={{ color: theme.node.muted }}>
                     {blockedReason}
                 </p>
             ) : null}
             <div className="canvas-agent-approval-actions">
-                {settingsError ? (
+                {settingsError || batchDurationError ? (
                     <p role="alert" className="text-xs">
-                        {settingsError}
+                        {settingsError || batchDurationError}
                     </p>
                 ) : null}
                 <button type="button" className="canvas-agent-approval-reject" disabled={submitting || Boolean(blockedReason)} onClick={onReject}>
-                    暂不执行
+                    {stale ? "结束并准备重新申请" : "暂不执行"}
                 </button>
                 <button
                     type="button"
                     className="canvas-agent-approval-approve"
-                    disabled={submitting || Boolean(blockedReason) || Boolean(targetGenerating) || Boolean(settingsError)}
+                    disabled={submitting || Boolean(blockedReason) || Boolean(targetGenerating) || Boolean(settingsError) || Boolean(batchDurationError) || Boolean(stale)}
                     onClick={() => {
-                        if (!settingsError) onApprove(mediaSettings);
+                        if (!settingsError && !batchDurationError) onApprove(mediaSettings);
                     }}
                 >
                     {submitting ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Check className="size-4" aria-hidden="true" />}

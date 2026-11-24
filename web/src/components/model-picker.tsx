@@ -81,7 +81,8 @@ export function ModelPicker({
     // 旧画布可能保存过已下架或前端历史内置模型；它们不能重新进入当前可选目录。
     const current = options.includes(resolvedCurrent) ? resolvedCurrent : "";
     const currentPrice = modelMenuPrice(config, current, capability, false, requirements);
-    const quoteRequest = useMemo(() => modelQuoteRequest(config, current, capability, requirements), [capability, config, current, requirements]);
+    const quoteKey = JSON.stringify(modelQuoteRequest(config, current, capability, requirements));
+    const quoteRequest = useMemo(() => (quoteKey ? JSON.parse(quoteKey) as NonNullable<ReturnType<typeof modelQuoteRequest>> : undefined), [quoteKey]);
     const [routeQuote, setRouteQuote] = useState<LogicalModelQuote | undefined>();
     const creationVariant = variant === "creation";
     const currentChannel = current ? resolveModelChannel(config, current) : undefined;
@@ -290,6 +291,7 @@ export function ModelPicker({
                                                     onClick={() => {
                                                         if (!model) return;
                                                         onChange(model);
+                                                        setPickerOpen(false);
                                                     }}
                                                 >
                                                     <ModelLabel
@@ -537,7 +539,7 @@ function modelMenuPrice(config: AiConfig, model: string, capability?: ModelCapab
     if (cost.pricePolicy === "channel") {
         const tiers = cost.logicalPriceTiers || [];
         if (!tiers.length) return null;
-        const matched = summary ? tiers : priceTiersForCurrentSelection(tiers, capability, config, requirements);
+        const matched = summary ? tiers : priceTiersForCurrentSelection(tiers, capability, { ...config, model }, requirements);
         if (!summary && !matched.length) return { kind: "tiers", label: "当前规格无报价", compactLabel: "当前规格无报价", title: "请调整参数，或选择支持当前规格的渠道" };
         return channelTierPriceSummary(matched.length ? matched : tiers, tiers, capability);
     }

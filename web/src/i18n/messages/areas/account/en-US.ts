@@ -601,7 +601,10 @@ export const enUS: DeepStringRecord<typeof zhCN> = {
         models: {
             image: { title: "Default image model", description: "Image generation, editing and visual exploration", empty: "No image models available in current channels" },
             video: { title: "Default video model", description: "Text-to-video, image-to-video and shot extension", empty: "No video models available in current channels" },
-            text: { title: "Default text model", description: "Prompt rewriting, scripts and structured text", empty: "No text models available in current channels" },
+            text: { title: "Default agent text model", description: "Agent conversations, scripts and structured text", empty: "No text models available in current channels" },
+            optimizer: { title: "Default polish model", description: "Model used by prompt polishing and the optimizer, independent of the agent model", empty: "No polish models available in current channels" },
+            optimizerFollow: "Follow default text model",
+            optimizerFollowHint: "Uses the default text model above when not set",
             audio: { title: "Default audio model", description: "Speech, sound effects and music generation", empty: "No audio models available in current channels" },
             available: "{{count}} available",
             uncategorized: "Uncategorized",

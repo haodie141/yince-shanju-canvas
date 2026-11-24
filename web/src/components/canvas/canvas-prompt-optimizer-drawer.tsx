@@ -18,6 +18,7 @@ type CanvasPromptOptimizerDrawerProps = {
     targetModel: string;
     targetProtocol?: string;
     config: AiConfig;
+    videoSettings?: { seconds?: string; size?: string; resolution?: string };
     optimizerModel: string;
     references: CanvasResourceReference[];
     provider: PromptOptimizerProvider | null;
@@ -72,8 +73,8 @@ function getPanelResizeBounds() {
 function getInitialPanelSize(): PanelSize {
     const bounds = getPanelResizeBounds();
     return {
-        width: clampPanelValue(420, bounds.minWidth, bounds.maxWidth),
-        height: clampPanelValue(620, bounds.minHeight, bounds.maxHeight),
+        width: clampPanelValue(400, bounds.minWidth, bounds.maxWidth),
+        height: clampPanelValue(480, bounds.minHeight, bounds.maxHeight),
     };
 }
 
@@ -99,14 +100,14 @@ function getInitialPanelPosition(panelSize: PanelSize): PanelPosition {
     };
 }
 
-export function CanvasPromptOptimizerDrawer({ open, children, prompt, generationMode, targetModel, targetProtocol, config, optimizerModel, references, provider, onClose, onApply }: CanvasPromptOptimizerDrawerProps) {
+export function CanvasPromptOptimizerDrawer({ open, children, prompt, generationMode, targetModel, targetProtocol, config, videoSettings, optimizerModel, references, provider, onClose, onApply }: CanvasPromptOptimizerDrawerProps) {
     const { message } = App.useApp();
     const abortRef = useRef<AbortController | null>(null);
     const chatRef = useRef<HTMLDivElement | null>(null);
     const contentRef = useRef<HTMLDivElement | null>(null);
-    const [mode, setMode] = useState<PromptOptimizationMode>("expand");
+    const [mode, setMode] = useState<PromptOptimizationMode>("refine");
     const [activeOptimizerModel, setActiveOptimizerModel] = useState("");
-    const [draftPrompt, setDraftPrompt] = useState(prompt);
+    const [draftPrompt, setDraftPrompt] = useState("");
     const [submittedPrompt, setSubmittedPrompt] = useState("");
     const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([]);
     const [result, setResult] = useState<PromptOptimizationResult | null>(null);
@@ -142,8 +143,8 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
     useEffect(() => {
         if (!open) return;
         abortRef.current?.abort();
-        setDraftPrompt(prompt);
-        setSubmittedPrompt(prompt.trim());
+        setDraftPrompt("");
+        setSubmittedPrompt("");
         setActiveOptimizerModel(optimizerModel);
         setSelectedReferenceIds(references.filter((reference) => reference.active).map((reference) => reference.id));
         setResult(null);
@@ -419,32 +420,44 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
     };
 
     const runOptimization = async (requestedPrompt = draftPrompt) => {
-        const promptValue = requestedPrompt.trim();
-        if (!provider || working || !promptValue || (mode === "reference" && !selectedReferences.length)) return;
+        const instruction = requestedPrompt.trim();
+        const sourcePrompt = selectedPrompt.trim() || prompt.trim();
+        if (!provider || working || (!sourcePrompt && !instruction) || (mode === "reference" && !selectedReferences.length)) return;
         const controller = new AbortController();
         abortRef.current?.abort();
         abortRef.current = controller;
+        const timeout = window.setTimeout(() => {
+            if (abortRef.current !== controller) return;
+            setDraftPrompt(instruction);
+            setError("润色等待超时，请先核对积分记录，再决定是否重试。");
+            setWorking(false);
+            setStreaming(false);
+            controller.abort();
+        }, 120_000);
+        controller.signal.addEventListener("abort", () => window.clearTimeout(timeout), { once: true });
         setWorking(true);
         setStreaming(false);
         setError("");
-        setSubmittedPrompt(promptValue);
+        setSubmittedPrompt(instruction || "请润色当前提示词");
         setDraftPrompt("");
         setResult(null);
         setSelectedPrompt("");
         try {
             const optimized = await provider.optimize(
                 {
-                    prompt: promptValue,
+                    prompt: sourcePrompt || instruction,
+                    ...(sourcePrompt && instruction ? { instruction } : {}),
                     mode,
                     generationMode,
                     targetModel,
                     targetProtocol,
                     optimizerModel: activeOptimizerModel || undefined,
+                    ...(generationMode === "video" ? { videoSettings } : {}),
                     context: { texts: textContext, images: imageContext },
                 },
                 {
                     signal: controller.signal,
-                    onDelta: () => setStreaming(true),
+                    onDelta: () => { if (!controller.signal.aborted) setStreaming(true); },
                 },
             );
             if (controller.signal.aborted) return;
@@ -452,12 +465,19 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
             setSelectedPrompt(optimized.optimizedPrompt);
         } catch (reason) {
             if (controller.signal.aborted) return;
-            setDraftPrompt(promptValue);
-            setError(reason instanceof Error ? reason.message : "提示词优化失败，请稍后重试");
+            setDraftPrompt(instruction);
+            const detail = reason instanceof Error ? reason.message : "";
+            setError(/network\s*error|failed to fetch|fetch failed|load failed|connection (?:reset|closed)|socket hang up|context canceled/i.test(detail)
+                ? "连接中断，润色结果未完整返回。请先查看积分记录，确认后再重试。"
+                : detail || "提示词优化失败，请稍后重试");
         } finally {
-            if (!controller.signal.aborted) {
-                setWorking(false);
-                setStreaming(false);
+            window.clearTimeout(timeout);
+            if (abortRef.current === controller) {
+                abortRef.current = null;
+                if (!controller.signal.aborted) {
+                    setWorking(false);
+                    setStreaming(false);
+                }
             }
         }
     };
@@ -491,6 +511,7 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
                         <span>当前模式：{modeOptions.find((option) => option.value === mode)?.label}</span>
                     </div>
                     <p>{modeDescriptions[mode]}</p>
+                    {prompt.trim() ? <p className="mt-2 text-foreground/60">已关联当前节点提示词，可直接发送或补充润色要求。</p> : null}
                     {mode === "reference" ? (
                         <ReferenceSelection
                             references={activeReferences}
@@ -502,7 +523,7 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
                             <span>将结合参考</span>
                             <div className="flex min-w-0 flex-wrap gap-2">
                                 {activeReferences.map((reference) => (
-                                    <Tag key={reference.id}>{reference.title || reference.label}</Tag>
+                                    <span key={reference.id} title={reference.title} className="max-w-40 truncate rounded-md bg-muted/50 px-2 py-0.5 text-foreground/75">{reference.label || reference.title}</span>
                                 ))}
                             </div>
                         </div>
@@ -685,8 +706,8 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
                     value={draftPrompt}
                     onChange={(value) => setDraftPrompt(value)}
                     onSubmit={(value) => void runOptimization(value)}
-                    placeholder="继续描述你的画面想法，Enter 发送"
-                    autoSize={{ minRows: 2, maxRows: 6 }}
+                    placeholder={prompt.trim() ? "输入补充要求（选填），例如：突出电影感" : "描述你的画面想法，Enter 发送"}
+                    autoSize={{ minRows: 2, maxRows: 4 }}
                     disabled={working}
                     suffix={false}
                     submitType="enter"
@@ -725,7 +746,7 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
                                     type="button"
                                     className="canvas-prompt-optimizer-send"
                                     onClick={() => void runOptimization()}
-                                    disabled={!provider || working || !draftPrompt.trim() || (mode === "reference" && !selectedReferences.length)}
+                                    disabled={!provider || working || (!prompt.trim() && !selectedPrompt.trim() && !draftPrompt.trim()) || (mode === "reference" && !selectedReferences.length)}
                                     aria-label={working ? "正在优化" : "发送优化请求"}
                                 >
                                     {working ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : <ArrowUp className="size-4" strokeWidth={2.35} aria-hidden="true" />}

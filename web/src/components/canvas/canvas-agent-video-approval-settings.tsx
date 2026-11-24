@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ModelPicker } from "@/components/model-picker";
 import { VideoSettingsPanel } from "@/components/video-settings-panel";
@@ -6,15 +6,19 @@ import type { CanvasTheme } from "@/lib/canvas-theme";
 import { agentApprovalModel, agentApprovalModelSelection, agentMediaSettings, type AgentVideoApproval } from "@/lib/canvas/agent-media-approval";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { preserveVideoSettings } from "@/lib/media-settings";
-import { resolveCompatibleModel, type ModelRequirements } from "@/lib/model-selection";
+import { modelCompatibilityError, resolveCompatibleModel, type ModelRequirements } from "@/lib/model-selection";
+import { scopedLocalStorage } from "@/lib/user-scope";
 import type { AgentMediaSettings } from "@/services/api/agent";
-import { PUBLIC_MODEL_CATALOG_ID, resolveModelRequestConfig, useEffectiveConfig } from "@/stores/use-config-store";
+import { PUBLIC_MODEL_CATALOG_ID, resolveModelRequestConfig, selectableModelsByCapability, useEffectiveConfig } from "@/stores/use-config-store";
 
-export function CanvasAgentVideoApprovalSettings({ initial, value, theme, disabled, onChange }: { initial: AgentVideoApproval; value?: AgentMediaSettings; theme: CanvasTheme; disabled: boolean; onChange: (value: AgentMediaSettings) => void }) {
+const VIDEO_APPROVAL_MODEL_KEY = "open_ai_canvas:agent_video_approval_model";
+
+export function CanvasAgentVideoApprovalSettings({ initial, value, theme, disabled, onChange, batch = false }: { initial: AgentVideoApproval; value?: AgentMediaSettings; theme: CanvasTheme; disabled: boolean; onChange: (value: AgentMediaSettings) => void; batch?: boolean }) {
     const { t } = useTranslation();
     const effective = useEffectiveConfig();
     const config = useMemo(() => ({ ...effective, channels: effective.channels.filter((channel) => channel.scope === "system" || channel.id === PUBLIC_MODEL_CATALOG_ID) }), [effective]);
     const settings = agentMediaSettings(value || initial);
+    const restoredPreference = useRef(false);
     const model = agentApprovalModel(config, settings, "video");
     const duration = String(settings.durationSeconds || initial.durationSeconds || "");
     const audio = settings.videoGenerateAudio === undefined ? "" : String(settings.videoGenerateAudio);
@@ -34,7 +38,7 @@ export function CanvasAgentVideoApprovalSettings({ initial, value, theme, disabl
         },
     };
 
-    const changeModel = (next: string) => {
+    const changeModel = (next: string, remember = true) => {
         if (disabled) return;
         const profile = modelCapabilityConfigFor(config, next).video;
         if (!profile) return;
@@ -43,12 +47,29 @@ export function CanvasAgentVideoApprovalSettings({ initial, value, theme, disabl
             ...agentApprovalModelSelection(config, next),
             size: normalized.ratio,
             quality: normalized.resolution,
-            durationSeconds: Number(normalized.seconds),
+            durationSeconds: batch ? undefined : Number(normalized.seconds),
             videoGenerateAudio: settings.videoGenerateAudio,
             videoWatermark: settings.videoWatermark,
             videoArkPrivateAssetUpload: settings.videoArkPrivateAssetUpload,
         });
+        if (remember) {
+            restoredPreference.current = true;
+            try { scopedLocalStorage.setItem(VIDEO_APPROVAL_MODEL_KEY, next); } catch { /* 保存偏好失败不影响本次审批 */ }
+        }
     };
+
+    useEffect(() => {
+        if (restoredPreference.current || disabled || value) return;
+        let preferred = "";
+        try { preferred = scopedLocalStorage.getItem(VIDEO_APPROVAL_MODEL_KEY) || ""; } catch { /* 浏览器存储不可用时沿用审批默认模型 */ }
+        if (!preferred) { restoredPreference.current = true; return; }
+        const models = selectableModelsByCapability(config, "video");
+        if (!models.length) return;
+        restoredPreference.current = true;
+        if (preferred === model || !models.includes(preferred)) return;
+        if (modelCompatibilityError(config, preferred, { capability: "video", input: requirements.input })) return;
+        changeModel(preferred, false);
+    }, [config, disabled, value]);
 
     const changeOption = (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoArkPrivateAssetUpload", next: string) => {
         if (disabled) return;
@@ -87,7 +108,7 @@ export function CanvasAgentVideoApprovalSettings({ initial, value, theme, disabl
                     config={config}
                     capability="video"
                     value={model}
-                    onChange={changeModel}
+                    onChange={(next) => changeModel(next)}
                     requirements={requirements}
                     variant="creation"
                     fullWidth
@@ -102,6 +123,7 @@ export function CanvasAgentVideoApprovalSettings({ initial, value, theme, disabl
                     onConfigChange={changeOption}
                     theme={theme}
                     showTitle={false}
+                    showDuration={!batch}
                     className="min-w-0 space-y-3"
                 />
             ) : (

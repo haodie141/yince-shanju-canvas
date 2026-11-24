@@ -45,6 +45,7 @@ const (
 	FeatureShortDrama                  = app.FeatureShortDrama
 	FeatureSystemPlugins               = app.FeatureSystemPlugins
 	FeatureInspirationSources          = app.FeatureInspirationSources
+	FeatureInspirationHall             = app.FeatureInspirationHall
 	FeatureTaskCenter                  = app.FeatureTaskCenter
 	FeatureTimelineTranscription       = app.FeatureTimelineTranscription
 	FeatureVideoWorkbench              = app.FeatureVideoWorkbench

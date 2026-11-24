@@ -534,6 +534,10 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 			break
 		}
 	}
+	var admissionErr *cloudAgentMediaAdmissionError
+	if errors.As(err, &admissionErr) && admissionErr.Reason == "snapshot_conflict" {
+		return &AppError{Status: 409, Code: 409, Reason: ErrorReason("agent_approval_snapshot_conflict"), Message: "画布相关内容已变化，本次审批已过期；请结束本次审批后重新发起，未提交生成任务"}
+	}
 	if err != nil || decision != "approve" || !followUp {
 		return err
 	}

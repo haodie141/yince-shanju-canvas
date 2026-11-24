@@ -2498,6 +2498,18 @@ summary.agent-tool-step:hover {
     cursor: grabbing;
 }
 
+.canvas-agent-launcher.is-static-icon {
+    box-shadow: none;
+}
+
+.canvas-agent-launcher.is-static-icon::before {
+    display: none;
+}
+
+.canvas-agent-launcher.is-static-icon > img {
+    pointer-events: none;
+}
+
 .canvas-agent-launcher > .fluid-orb {
     position: absolute;
     top: 50%;

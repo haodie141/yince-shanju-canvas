@@ -151,6 +151,13 @@ func (s *Service) CreateTask(userID string, req CreateTaskRequest) (*model.Task,
 	if err := s.ValidateTaskCapability(normalizedInput); err != nil {
 		return nil, err
 	}
+	// 审批编辑在事务和存储锁内做干运行，不能在锁内发起网络审核或写入拦截日志。
+	// 实际提交后由 worker 在调用生成上游前复核，失败时退回未发送任务的预留积分。
+	if !req.callerHoldsStorageMu {
+		if err := s.moderateTaskAdmission(userID, req.ProjectID, taskType, prompt, normalizedInput); err != nil {
+			return nil, err
+		}
+	}
 	if containsInlineMediaDataURL(normalizedInput) {
 		return nil, BadAuthRequest("任务输入不能包含内嵌媒体，请先上传到资源存储")
 	}

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { loadCloudAgentConversation, mergeCloudAgentConversation, mergeCloudAgentConversations, projectCloudAgentConversation, refreshCloudAgentConversations, type CloudAgentHistoryClient } from "@/services/cloud-agent-history";
 import type { AgentEvent, AgentRun, AgentConversationSummary } from "@/services/api/agent";
 import type { CloudAgentConversation } from "@/services/cloud-agent-conversations";
+import { currentAgentTurnMessages } from "@/lib/canvas/cloud-agent-turn";
+import { latestAgentPlanItems } from "@/lib/canvas/cloud-agent-plan";
 
 const at = "2026-10-23T00:00:00Z";
 const conversationId = "conversation-1";
@@ -40,6 +42,19 @@ function client(overrides: Partial<CloudAgentHistoryClient> = {}): CloudAgentHis
 }
 
 describe("Agent cloud conversation history", () => {
+    test("history restoration keeps inherited plans separate from a new turn's plan", () => {
+        const items = [{ id: "step", title: "旧计划", status: "doing" }];
+        const first = run("first", { events: [event("first", 1, "plan_updated", { items })] });
+        const second = run("second", { parentId: "first", events: [event("second", 1, "plan_updated", { items, inherited: true })] });
+        const conversation = projectCloudAgentConversation(conversationId, [first, second]);
+        expect(conversation.messages.find((item) => item.id === "plan-second")?.planInherited).toBe(true);
+        expect(latestAgentPlanItems(currentAgentTurnMessages(conversation.messages, conversation.run), "second")).toEqual([]);
+    });
+    test("keeps local errors at their original position when later remote messages arrive", () => {
+        const remote = projectCloudAgentConversation(conversationId, [run("first"), run("second", { parentId: "first" })]);
+        const local = { ...remote, messages: [remote.messages[0], { id: "local-error", role: "error" as const, text: "网络错误" }] };
+        expect(mergeCloudAgentConversation(local, remote).messages.map((item) => item.id)).toEqual(["user-first", "local-error", "user-second"]);
+    });
     test("restores every run page and every event page from the first event", async () => {
         const reads: Array<{ id: string; seq: number; fromStart?: boolean }> = [];
         const restored = await loadCloudAgentConversation(conversationId, {

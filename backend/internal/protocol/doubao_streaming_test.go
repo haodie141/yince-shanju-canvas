@@ -54,7 +54,7 @@ func TestDoubaoStreamingTTSPackageBuildsOfficialRequest(t *testing.T) {
 func TestStreamedJSONAudioCreateResultConcatenatesFrames(t *testing.T) {
 	first := base64.StdEncoding.EncodeToString([]byte("first"))
 	second := base64.StdEncoding.EncodeToString([]byte("second"))
-	body := []byte(`{"code":0,"data":"` + first + `"}{"code":0,"data":"` + second + `","usage":{"characters":6}}`)
+	body := []byte(`{"code":0,"data":"` + first + `"}{"code":0,"data":"` + second + `"}{"code":20000000,"usage":{"characters":6}}`)
 	adapter := manifestAdapter{manifest: Manifest{Response: ManifestResponse{StreamedJSONAudio: true, ResultKind: "audio"}}}
 	result, err := adapter.ParseCreate(context.Background(), body)
 	if err != nil {
@@ -103,6 +103,19 @@ func TestDoubaoSeedAudioCreateUsesTextPromptWithoutResourceHeader(t *testing.T) 
 	body := spec.Body.(map[string]any)
 	if body["model"] != "seed-audio-1.0" || body["text_prompt"] != "你好" || body["references"] != nil {
 		t.Fatalf("text-only body = %#v", body)
+	}
+}
+
+func TestDoubaoSeedAudioSpeedDefaultsAndConversion(t *testing.T) {
+	manifest, err := os.ReadFile("../../../plugin-packages/doubao-streaming-tts/manifest.json")
+	if err != nil { t.Fatal(err) }
+	adapter, err := LoadManifest(manifest)
+	if err != nil { t.Fatal(err) }
+	for _, tc := range []struct { speed any; want float64 }{{nil, 0}, {"", 0}, {"1", 0}, {"0.75", -25}, {"1.25", 25}} {
+		spec, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Capability: CapabilityAudio, Model: "seed-audio-1.0", Prompt: "你好", Extra: map[string]any{"audioSpeed": tc.speed}}})
+		if err != nil { t.Fatal(err) }
+		config := spec.Body.(map[string]any)["audio_config"].(map[string]any)
+		if got, exists := config["speech_rate"]; !exists || manifestFloat(got) != tc.want { t.Errorf("speed %v: speech_rate = %v, want %v", tc.speed, got, tc.want) }
 	}
 }
 

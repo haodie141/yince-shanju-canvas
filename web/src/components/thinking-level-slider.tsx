@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type CSSProperties } from "react";
-import { THINKING_LEVEL_LABELS, type ThinkingLevel, type ThinkingRequest } from "@/lib/text-thinking";
+import { THINKING_LEVEL_LABELS, thinkingRequestLabel, type ThinkingLevel, type ThinkingRequest } from "@/lib/text-thinking";
 import "./thinking-level-slider.css";
 
 type Props = {
@@ -8,9 +8,10 @@ type Props = {
     resolvedLevel?: ThinkingLevel | "";
     onChange: (value: ThinkingRequest) => void;
     disabled?: boolean;
+    showResolvedDefault?: boolean;
 };
 
-export function ThinkingLevelSlider({ levels, value, resolvedLevel, onChange, disabled = false }: Props) {
+export function ThinkingLevelSlider({ levels, value, resolvedLevel, onChange, disabled = false, showResolvedDefault = false }: Props) {
     const id = useId();
     const dragging = useRef(false);
     const pending = useRef(0);
@@ -23,7 +24,7 @@ export function ThinkingLevelSlider({ levels, value, resolvedLevel, onChange, di
     const position = draft ?? savedIndex;
     const index = Math.max(0, Math.min(options.length - 1, Math.round(position)));
     const selected = options[index];
-    const label = selected === "auto" ? "默认" : THINKING_LEVEL_LABELS[selected as ThinkingLevel];
+    const label = selected === "auto" ? (showResolvedDefault ? thinkingRequestLabel("auto", resolvedLevel || "") : "默认") : THINKING_LEVEL_LABELS[selected as ThinkingLevel];
     const tone = selected === "max" ? "max" : selected === "off" || selected === "auto" ? "off" : "on";
     const commit = () => {
         if (!dragging.current) return;

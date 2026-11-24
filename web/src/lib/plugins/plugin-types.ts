@@ -173,6 +173,7 @@ export type PluginTextResponse = {
 
 export type PluginTextRequest = {
     model?: string;
+    maxOutputTokens?: number;
     messages: PluginTextMessage[];
     tools?: PluginTextTool[];
     toolChoice?: PluginTextToolChoice;
@@ -208,11 +209,13 @@ export type PromptOptimizationMode = "expand" | "refine" | "style" | "model-adap
 
 export type PromptOptimizationInput = {
     prompt: string;
+    instruction?: string;
     mode: PromptOptimizationMode;
     generationMode: "image" | "video";
     targetModel?: string;
     targetProtocol?: string;
     optimizerModel?: string;
+    videoSettings?: { seconds?: string; size?: string; resolution?: string };
     context?: {
         texts?: Array<{ title: string; text: string }>;
         images?: Array<{ title: string; url: string }>;

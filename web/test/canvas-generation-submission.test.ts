@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { canvasGenerationPromptMetadata, canvasGenerationRequestFingerprint, runCanvasGenerationSubmissionOnce } from "@/lib/canvas/canvas-generation-submission";
+import { canvasGenerationPromptMetadata, canvasGenerationRequestFingerprint, restoreCanvasGenerationPreparation, runCanvasGenerationSubmissionOnce } from "@/lib/canvas/canvas-generation-submission";
+import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 function fingerprint(overrides: Partial<Parameters<typeof canvasGenerationRequestFingerprint>[0]> = {}) {
     return canvasGenerationRequestFingerprint({
@@ -22,6 +23,17 @@ function fingerprint(overrides: Partial<Parameters<typeof canvasGenerationReques
 }
 
 describe("canvas generation submission", () => {
+    test("本地校验失败恢复准备状态，同时保留用户编辑，不覆盖已绑定的新任务", () => {
+        const original: CanvasNodeData = { id: "node-1", type: CanvasNodeType.Image, position: { x: 0, y: 0 }, width: 300, height: 200, metadata: { status: "idle", composerContent: "旧内容" } };
+        const preparing: CanvasNodeData = { ...original, metadata: { ...original.metadata, status: "loading", taskStage: "正在准备参考素材", taskCreatedAt: "2026-01-01T00:00:00.000Z", taskProgress: 0, composerContent: "用户新内容" } };
+        const restored = restoreCanvasGenerationPreparation(preparing, original, "2026-01-01T00:00:00.000Z");
+        expect(restored.metadata?.status).toBe("idle");
+        expect(restored.metadata?.taskStage).toBeUndefined();
+        expect(restored.metadata?.composerContent).toBe("用户新内容");
+        const submitted = { ...preparing, metadata: { ...preparing.metadata, taskId: "task-1" } };
+        expect(restoreCanvasGenerationPreparation(submitted, original, "2026-01-01T00:00:00.000Z")).toBe(submitted);
+        expect(restoreCanvasGenerationPreparation(preparing, original, "different-request")).toBe(preparing);
+    });
     test("持久化时分离编辑器槽位提示词和模型提示词", () => {
         expect(canvasGenerationPromptMetadata("自我介绍 @图片1", "电影感：自我介绍 @图片1")).toEqual({
             composerContent: "自我介绍 @图片1",

@@ -17,6 +17,19 @@ func TestCanvasShareTokenHashDoesNotExposeToken(t *testing.T) {
 	}
 }
 
+func TestPublicCanvasShareReportsCopyPermissionAndUnavailableMedia(t *testing.T) {
+	svc := newCanvasOperationTestService(t)
+	token := strings.Repeat("a", 43)
+	project := &model.CanvasProject{ID: "p", UserID: "owner", PayloadJSON: `{"id":"p","nodes":[{"id":"a","type":"image","title":"本地图片","metadata":{"content":"blob:local"}},{"id":"b","type":"video","title":"视频","metadata":{"storageKey":"resource:video_1"}}]}`}
+	share := &model.CanvasShare{ID: "s", UserID: "owner", ProjectID: "p", TokenHash: canvasShareTokenHash(token), Enabled: true, AllowCopy: true}
+	if err := svc.repo.Create(project); err != nil { t.Fatal(err) }
+	if err := svc.repo.Create(share); err != nil { t.Fatal(err) }
+	result, err := svc.PublicCanvasShare(token)
+	if err != nil { t.Fatal(err) }
+	if !result.AllowCopy || len(result.CopyIssues) != 1 || !strings.Contains(result.CopyIssues[0], "本地图片") { t.Fatalf("unexpected copy preflight: %#v", result) }
+	if _, err := svc.SetCanvasShareCopyPermission("another-user", "p", false); err == nil { t.Fatal("another user changed copy permission") }
+}
+
 func TestPublicCanvasProjectScrubsSecretsAndRewritesResources(t *testing.T) {
 	payload := map[string]any{
 		"id": "project-1", "title": "公开画布", "chatSessions": []any{map[string]any{"secret": "chat"}},
@@ -59,6 +72,29 @@ func TestCanvasResourceIDRejectsInvalidValues(t *testing.T) {
 	if got := assets.ResourceID("/api/resources/abc_123/file"); got != "abc_123" {
 		t.Fatalf("unexpected resource id: %q", got)
 	}
+}
+
+func TestPublicCanvasProjectIncludesVersionAndReferenceResources(t *testing.T) {
+	payload := `{"id":"p","nodes":[{"id":"n","type":"video","metadata":{"storageKey":"resource:current","references":["resource:ref"],"videoPreview":{"storageKey":"resource:preview"},"currentMediaVersionId":"v1","mediaVersions":[{"id":"v1","media":{"storageKey":"resource:old"},"generation":{"references":["resource:ref"],"taskId":"private"}}]}}]}`
+	public, resources, err := publicCanvasProject(&model.CanvasProject{ID:"p", PayloadJSON:payload}, "token")
+	if err != nil { t.Fatal(err) }
+	encoded, _ := json.Marshal(public)
+	for _, id := range []string{"current", "ref", "preview", "old"} {
+		if !resources[id] || !strings.Contains(string(encoded), "/resources/"+id+"/file") { t.Fatalf("missing %s: %s", id, encoded) }
+	}
+	if strings.Contains(string(encoded), "resource:") || strings.Contains(string(encoded), "private") { t.Fatalf("private data leaked: %s", encoded) }
+}
+
+func TestShareCopyPreflightAllowsCloudVersionsAndRejectsLocalVersion(t *testing.T) {
+	svc := newCanvasOperationTestService(t)
+	token := strings.Repeat("b", 43)
+	project := &model.CanvasProject{ID:"p", UserID:"owner", PayloadJSON:`{"id":"p","nodes":[{"id":"a","type":"image","metadata":{"storageKey":"resource:current","references":["resource:ref"],"mediaVersions":[{"media":{"storageKey":"resource:old"}}]}},{"id":"b","type":"image","title":"local","metadata":{"storageKey":"resource:current","mediaVersions":[{"media":{"content":"blob:local"}}]}}]}`}
+	share := &model.CanvasShare{ID:"s", UserID:"owner", ProjectID:"p", TokenHash:canvasShareTokenHash(token), Enabled:true, AllowCopy:true}
+	if err := svc.repo.Create(project); err != nil { t.Fatal(err) }
+	if err := svc.repo.Create(share); err != nil { t.Fatal(err) }
+	result, err := svc.PublicCanvasShare(token)
+	if err != nil { t.Fatal(err) }
+	if len(result.CopyIssues) != 1 || !strings.Contains(result.CopyIssues[0], "local") { t.Fatalf("unexpected copy issues: %#v", result.CopyIssues) }
 }
 
 func TestPublicCanvasProjectDropsUnmanagedMediaURL(t *testing.T) {

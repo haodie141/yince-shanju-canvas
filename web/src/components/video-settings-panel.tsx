@@ -25,6 +25,7 @@ type VideoSettingsPanelProps = {
     onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoArkPrivateAssetUpload", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
+    showDuration?: boolean;
     className?: string;
 };
 
@@ -37,14 +38,14 @@ export function VideoSettingsPanel(props: VideoSettingsPanelProps) {
     );
 }
 
-function VideoSettingsControls({ config, onConfigChange, theme, showTitle = true, className = "w-[292px] space-y-3" }: VideoSettingsPanelProps) {
+function VideoSettingsControls({ config, onConfigChange, theme, showTitle = true, showDuration = true, className = "w-[292px] space-y-3" }: VideoSettingsPanelProps) {
     const profile = modelCapabilityConfigFor(config, config.model).video!;
     const priceTiers = modelPriceTiers(config);
     if (resolveModelRequestConfig(config, config.model).interfaceType === "volcengine-jimeng-video") {
-        return <JiMengVideoSettingsPanel config={config} profile={profile} priceTiers={priceTiers} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
+        return <JiMengVideoSettingsPanel config={config} profile={profile} priceTiers={priceTiers} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} showDuration={showDuration} className={className} />;
     }
     if (isSeedanceVideoConfig(config)) {
-        return <SeedanceVideoSettingsPanel config={config} profile={profile} priceTiers={priceTiers} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
+        return <SeedanceVideoSettingsPanel config={config} profile={profile} priceTiers={priceTiers} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} showDuration={showDuration} className={className} />;
     }
 
     const { seconds, resolution, ratio } = preserveVideoSettings(profile, { seconds: config.videoSeconds, resolution: config.vquality, ratio: config.size }, resolveModelRequestConfig(config, config.model).interfaceType);
@@ -101,9 +102,9 @@ function VideoSettingsControls({ config, onConfigChange, theme, showTitle = true
                         </div>
                     </SettingGroup>
                 ) : null}
-                <SettingGroup title="秒数" color={theme.node.muted}>
+                {showDuration && <SettingGroup title="秒数" color={theme.node.muted}>
                     <VideoDurationControl profile={profile} value={Number(seconds)} theme={theme} disabled={(value) => !hasPriceTierForVideoSelection(priceTiers, resolution, value)} onChange={(value) => onConfigChange("videoSeconds", String(value))} />
-                </SettingGroup>
+                </SettingGroup>}
                 {profile.generateAudio.supported || profile.watermark.supported ? (
                     <SettingGroup title="输出" color={theme.node.muted}>
                         <div className="grid grid-cols-2 gap-3 rounded-md px-2" style={{ background: theme.toolbar.itemHover }}>
@@ -117,7 +118,7 @@ function VideoSettingsControls({ config, onConfigChange, theme, showTitle = true
     );
 }
 
-function JiMengVideoSettingsPanel({ config, profile, priceTiers, onConfigChange, theme, showTitle, className }: VideoSettingsPanelProps & { profile: VideoCapabilityConfig; priceTiers: ReturnType<typeof modelPriceTiers> }) {
+function JiMengVideoSettingsPanel({ config, profile, priceTiers, onConfigChange, theme, showTitle, showDuration = true, className }: VideoSettingsPanelProps & { profile: VideoCapabilityConfig; priceTiers: ReturnType<typeof modelPriceTiers> }) {
     const { seconds, ratio } = preserveVideoSettings(profile, { seconds: config.videoSeconds, ratio: config.size });
     return (
         <ImageSettingsTheme theme={theme}>
@@ -132,15 +133,15 @@ function JiMengVideoSettingsPanel({ config, profile, priceTiers, onConfigChange,
                         ))}
                     </div>
                 </SettingGroup>
-                <SettingGroup title="秒数" color={theme.node.muted}>
+                {showDuration && <SettingGroup title="秒数" color={theme.node.muted}>
                     <VideoDurationControl profile={profile} value={Number(seconds)} theme={theme} disabled={(value) => !hasPriceTierForVideoSelection(priceTiers, "*", value)} onChange={(value) => onConfigChange("videoSeconds", String(value))} />
-                </SettingGroup>
+                </SettingGroup>}
             </div>
         </ImageSettingsTheme>
     );
 }
 
-function SeedanceVideoSettingsPanel({ config, profile, priceTiers, onConfigChange, theme, showTitle, className }: VideoSettingsPanelProps & { profile: VideoCapabilityConfig; priceTiers: ReturnType<typeof modelPriceTiers> }) {
+function SeedanceVideoSettingsPanel({ config, profile, priceTiers, onConfigChange, theme, showTitle, showDuration = true, className }: VideoSettingsPanelProps & { profile: VideoCapabilityConfig; priceTiers: ReturnType<typeof modelPriceTiers> }) {
     const model = modelOptionName(config.model || config.videoModel);
     const { resolution, ratio, seconds } = preserveVideoSettings(profile, { resolution: config.vquality, ratio: config.size, seconds: config.videoSeconds }, resolveModelRequestConfig(config, config.model || config.videoModel).interfaceType);
     const duration = Number(seconds);
@@ -189,9 +190,9 @@ function SeedanceVideoSettingsPanel({ config, profile, priceTiers, onConfigChang
                         })}
                     </div>
                 </SettingGroup>
-                <SettingGroup title="时长" color={theme.node.muted}>
+                {showDuration && <SettingGroup title="时长" color={theme.node.muted}>
                     <VideoDurationControl profile={profile} value={duration} theme={theme} disabled={(value) => !hasPriceTierForVideoSelection(priceTiers, resolution, value)} onChange={(value) => onConfigChange("videoSeconds", String(value))} />
-                </SettingGroup>
+                </SettingGroup>}
                 <SettingGroup title="输出" color={theme.node.muted}>
                     <div className="grid grid-cols-2 gap-3 rounded-md px-2" style={{ background: theme.toolbar.itemHover }}>
                         {profile.generateAudio.supported ? <SwitchRow label="生成声音" checked={generateAudio} theme={theme} onChange={(checked) => onConfigChange("videoGenerateAudio", String(checked))} /> : null}

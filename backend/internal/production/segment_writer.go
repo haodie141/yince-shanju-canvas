@@ -44,6 +44,8 @@ func SegmentWriterPrompt(in SegmentPromptInput, draft string, previousEnding str
 `)
 	if in.Index > 0 && in.Independent {
 		fmt.Fprintf(&b, "本段与其他段并行独立生成（不附带第%d段画面）：开场站位、朝向、服装道具状态与上一段结尾保持一致，但不写“定格”“接续”之类依赖上一段画面的描述\n", in.Index)
+	} else if in.ReferenceFrame {
+		fmt.Fprintf(&b, "参考第%d段视频结尾画面，自然延续人物站位、动作和情绪\n", in.Index)
 	} else if in.Index > 0 {
 		fmt.Fprintf(&b, "严格从第%d段视频末尾的实际站位、朝向、动作和情绪状态继续，不重新摆位\n", in.Index)
 	}
@@ -170,6 +172,9 @@ func CleanWrittenPrompt(text string) string {
 
 // firstFrameRule 说明本段首帧从哪来：有上一段尾帧时首帧图就是那一帧，没有时由提示词描述首帧。
 func firstFrameRule(in SegmentPromptInput) string {
+	if in.ReferenceFrame {
+		return fmt.Sprintf("请求会把第%d段视频的最后一帧作为普通参考图，请结合该画面自然接续，角色和场景以相应参考图为准；这不是强制首帧，避免声称与上一段画面完全一致。", in.Index)
+	}
 	if in.FirstFrame {
 		return fmt.Sprintf("请求会附带第%d段视频的最后一帧作为本段首帧图（不占参考图编号）。先写一句“首帧即第%d段视频最后一帧”，再依据上一段结尾写清这一帧里每个人物的位置、朝向、姿态与道具接触，后续动作从这一帧自然延续；然后写渲染质感与画风、本段前中后段的视觉变化、明确禁止项（无额外滤镜噪点、无游戏 UI、无字幕水印、无全屏闪白等）", in.Index, in.Index)
 	}

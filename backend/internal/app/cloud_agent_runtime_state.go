@@ -330,12 +330,22 @@ func validateCloudAgentPolicySnapshot(snapshot cloudAgentPolicySnapshot) error {
 	if err != nil {
 		return fmt.Errorf("load Agent runtime policies: %w", err)
 	}
-	if snapshot.SystemPolicyID != system.ID || snapshot.SystemPolicyVersion != system.Version || snapshot.MediaPolicyID != media.ID || snapshot.MediaPolicyVersion != media.Version {
+	// Existing v20 runs keep their frozen prompt and approval state. Accept only
+	// hashes of the shipped policy (LF and CRLF), never arbitrary old content.
+	legacyV20 := snapshot.SystemPolicyID == system.ID && snapshot.MediaPolicyID == media.ID && snapshot.SystemPolicyVersion == 20 && snapshot.MediaPolicyVersion == 20 &&
+		((snapshot.SystemPolicyHash == "77b8e5d28a7ae470407b665ebd0e916d13faecab6f553665a2132835defb9183" && snapshot.MediaPolicyHash == "57cb27453d0ba0d49bc58e377b0d36b733d4f842ef0137991b7ea6656e3d0a09") ||
+			(snapshot.SystemPolicyHash == "d3c5b8feeb2e166c7916fc32c93839b40d4ad0a9df442b3119addca058c8c3e3" && snapshot.MediaPolicyHash == "fef2b3c875bee889dff678f08a7f109a72b0c4c8bae656c347595dd59625bfed"))
+	// The deployed v21 policy is also frozen for runs already in progress.
+	legacyV21 := snapshot.SystemPolicyID == system.ID && snapshot.MediaPolicyID == media.ID && snapshot.SystemPolicyVersion == 21 && snapshot.MediaPolicyVersion == 21 &&
+		((snapshot.SystemPolicyHash == "53e3e9546718d11eab689f40996279d3d7cbd3035396d2fce48d176c02717bbe" && snapshot.MediaPolicyHash == "f50b0f81bd7a84a00af785fe1aed68324089916edbafc8ab14daced806840900") ||
+			(snapshot.SystemPolicyHash == "d55aeb4c3d75097b36ce44b79248952c02ec91898ed0c7c4f0abd81f0691735a" && snapshot.MediaPolicyHash == "10dbb6510b18223fc6e3494f3db0941182a7c1f2b66bb4af1eb06c5176822936"))
+	legacy := legacyV20 || legacyV21
+	if !legacy && (snapshot.SystemPolicyID != system.ID || snapshot.SystemPolicyVersion != system.Version || snapshot.MediaPolicyID != media.ID || snapshot.MediaPolicyVersion != media.Version) {
 		return errors.New("Agent runtime policy version is unsupported")
 	}
 	// An existing run keeps its admitted prompt and tool schema. Never resume it
 	// against changed policies or capabilities under an unchanged version label.
-	if snapshot.SystemPolicyHash != system.Hash || snapshot.MediaPolicyHash != media.Hash || snapshot.CapabilitySetHash != cloudAgentCapabilitySetHash() {
+	if (!legacy && (snapshot.SystemPolicyHash != system.Hash || snapshot.MediaPolicyHash != media.Hash)) || snapshot.CapabilitySetHash != cloudAgentCapabilitySetHash() {
 		return errors.New("Agent runtime policy or capability contract has changed")
 	}
 	return nil

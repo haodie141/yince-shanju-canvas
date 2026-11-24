@@ -173,7 +173,7 @@ func streamedJSONAudioCreateResult(body []byte, resultKind string, format string
 	var usage map[string]any
 	for _, frame := range frames {
 		code := strings.ToLower(strings.TrimSpace(manifestString(firstNonNilPathValue(frame, "code", "status_code", "statusCode"))))
-		if code != "" && code != "0" && code != "ok" && code != "success" && code != "succeeded" {
+		if code != "" && code != "0" && code != "20000000" && code != "ok" && code != "success" && code != "succeeded" {
 			message := strings.TrimSpace(manifestString(firstNonNilPathValue(frame, "message", "msg", "error.message")))
 			if message == "" {
 				message = "上游返回失败状态"

@@ -19,6 +19,17 @@ func RegisterFeatureAvailabilityRoutes(r *gin.RouterGroup, svc *service.Service)
 		ok(c, gin.H{"welcomeEnabled": setting.WelcomeEnabled})
 	})
 
+	r.GET("/public/features", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		setting, err := svc.FeatureAvailability()
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		// 未登录访客也需要遵守页面可见性开关；只暴露这两个公开安全字段。
+		ok(c, gin.H{"features": gin.H{"inspirationHallEnabled": setting.InspirationHallEnabled, "inspirationSourcesVisible": setting.InspirationSourcesVisible}})
+	})
+
 	r.GET("/features", func(c *gin.Context) {
 		if _, err := currentUser(c, svc); err != nil {
 			failService(c, err)

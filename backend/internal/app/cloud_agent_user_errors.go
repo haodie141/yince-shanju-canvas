@@ -188,6 +188,13 @@ func taskErrorIsModeration(value string) bool {
 }
 
 func taskErrorModerationText(raw string) string {
+	const prefix = "内容审核未通过，请修改提示词后重新生成："
+	if _, reason, ok := strings.Cut(raw, prefix); ok {
+		reason = strings.TrimSpace(reason)
+		if reason != "" && utf8.RuneCountInString(reason) <= 30 && !strings.ContainsAny(reason, "\r\n") {
+			return taskErrorModerationMessage + " 原因：" + reason
+		}
+	}
 	return taskErrorModerationMessage
 }
 

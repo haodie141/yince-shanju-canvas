@@ -220,10 +220,10 @@ export function ReferenceBoard({
         <section className="drama-sdx-section" aria-label="本段参考资产">
             <div className="drama-sdx-section-head">
                 <span className="drama-sdx-count">
-                    本段参考 {request.references.filter((ref) => ref.sent).length}/{request.references.length}
+                    本段引用 {request.references.length} 张 · 实际附图 {request.references.filter((ref) => ref.sent).length} 张
                 </span>
                 <small>
-                    {segment.referenceMode === "custom" ? "手动指定" : "按镜头自动取"} · 本段最多发送 {request.referenceCapacity} 张{request.modelMaxImages ? ` · 模型上限 ${request.modelMaxImages} 张（含首帧）` : ""}
+                    {segment.referenceMode === "custom" ? "手动指定" : "按镜头自动取"} · 本段设定图最多发送 {request.referenceCapacity} 张{request.modelMaxImages ? ` · 模型图片上限 ${request.modelMaxImages} 张${request.firstFrameResourceId || request.firstFramePending ? "（接续画面占 1 张）" : ""}` : ""}
                 </small>
                 {segment.referenceMode === "custom" ? (
                     <Button size="small" type="text" disabled={busy} icon={<RotateCcw className="size-3.5" />} onClick={() => save({ autoReferences: true })}>
@@ -282,7 +282,7 @@ export function ReferenceBoard({
                         <MediaThumb resourceId={request.firstFrameResourceId} alt="上一段尾帧" />
                     </button>
                 ) : null}
-                <span>{first ? "开场段：无首帧，按提示词与参考图生成" : request.firstFrameResourceId ? `首帧：第 ${segment.index} 段尾帧` : `首帧：等待第 ${segment.index} 段视频生成`}</span>
+                <span>{first ? "开场段：无首帧，按提示词与参考图生成" : request.firstFrameResourceId ? `${request.operation === "reference_to_video" ? "接续参考" : "首帧"}：第 ${segment.index} 段尾帧` : `等待第 ${segment.index} 段视频生成`}</span>
             </div>
             {groupOrder.map((kind) => {
                 const group = [...ids.map((id) => castById.get(id)).filter((cast): cast is DramaCast => Boolean(cast)), ...[...castById.values()].filter((cast) => visible.has(cast.id) && !ids.includes(cast.id))].filter((cast) => cast.kind === kind);

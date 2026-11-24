@@ -26,7 +26,7 @@ func TestFeatureAvailabilityDefaultsToDisableFrontendModels(t *testing.T) {
 	if !setting.WelcomeEnabled {
 		t.Fatal("welcome should be enabled by default")
 	}
-	if setting.Configured || !setting.ShortDramaEnabled || !setting.TaskCenterEnabled || !setting.CreditsEnabled || !setting.CustomChannelsEnabled || setting.FrontendModelsEnabled || !setting.PluginCenterEnabled || !setting.SystemPluginsVisibleToUsers || !setting.InspirationSourcesVisible {
+	if setting.Configured || !setting.ShortDramaEnabled || !setting.TaskCenterEnabled || !setting.CreditsEnabled || !setting.CustomChannelsEnabled || setting.FrontendModelsEnabled || !setting.PluginCenterEnabled || !setting.SystemPluginsVisibleToUsers || !setting.InspirationSourcesVisible || !setting.InspirationHallEnabled {
 		t.Fatalf("FeatureAvailability() = %#v", setting)
 	}
 }
@@ -72,6 +72,29 @@ func TestWelcomeAvailabilityCanBeDisabledAndReenabled(t *testing.T) {
 	}
 }
 
+func TestInspirationHallCanBeDisabledAndReenabled(t *testing.T) {
+	svc, _ := newFeatureAvailabilityTestService(t)
+	actor := &model.User{ID: "admin-hall", Role: model.UserRoleAdmin}
+	for _, enabled := range []bool{false, true} {
+		value := platform.DefaultFeatureAvailability()
+		value.InspirationHallEnabled = enabled
+		if _, err := svc.UpdateFeatureAvailability(actor, value); err != nil {
+			t.Fatal(err)
+		}
+		got, err := svc.FeatureEnabled(FeatureInspirationHall)
+		if err != nil || got != enabled {
+			t.Fatalf("FeatureEnabled(inspirationHall) = %v, %v, want %v", got, err, enabled)
+		}
+		setting, err := svc.FeatureAvailability()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if setting.InspirationHallEnabled != enabled {
+			t.Fatalf("inspirationHallEnabled = %v, want %v", setting.InspirationHallEnabled, enabled)
+		}
+	}
+}
+
 func TestUpdateFeatureAvailabilityPersistsAndAudits(t *testing.T) {
 	svc, db := newFeatureAvailabilityTestService(t)
 	actor := &model.User{ID: "admin-1", Role: model.UserRoleAdmin}
@@ -81,11 +104,14 @@ func TestUpdateFeatureAvailabilityPersistsAndAudits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !setting.Configured || setting.ShortDramaEnabled || !setting.TaskCenterEnabled || setting.CreditsEnabled || !setting.CustomChannelsEnabled || setting.PluginCenterEnabled || setting.SystemPluginsVisibleToUsers || setting.InspirationSourcesVisible {
+	if !setting.Configured || setting.ShortDramaEnabled || !setting.TaskCenterEnabled || setting.CreditsEnabled || !setting.CustomChannelsEnabled || setting.PluginCenterEnabled || setting.SystemPluginsVisibleToUsers || setting.InspirationSourcesVisible || setting.InspirationHallEnabled {
 		t.Fatalf("UpdateFeatureAvailability() = %#v", setting)
 	}
 	if enabled, err := svc.FeatureEnabled(FeaturePluginCenter); err != nil || enabled {
 		t.Fatalf("FeatureEnabled(pluginCenter) = %v, %v", enabled, err)
+	}
+	if enabled, err := svc.FeatureEnabled(FeatureInspirationHall); err != nil || enabled {
+		t.Fatalf("FeatureEnabled(inspirationHall) = %v, %v", enabled, err)
 	}
 	if err := svc.RequireFeature(FeatureShortDrama); err == nil {
 		t.Fatal("RequireFeature(shortDrama) error = nil")

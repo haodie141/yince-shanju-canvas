@@ -41,6 +41,7 @@ export type FeatureAvailability = {
     pluginCenterEnabled: boolean;
     systemPluginsVisibleToUsers: boolean;
     inspirationSourcesVisible: boolean;
+    inspirationHallEnabled: boolean;
     imageWorkbenchEnabled: boolean;
     videoWorkbenchEnabled: boolean;
     ecommerceEnabled: boolean;
@@ -60,6 +61,7 @@ export const defaultFeatureAvailability: FeatureAvailability = {
     pluginCenterEnabled: true,
     systemPluginsVisibleToUsers: true,
     inspirationSourcesVisible: true,
+    inspirationHallEnabled: true,
     imageWorkbenchEnabled: false,
     videoWorkbenchEnabled: false,
     ecommerceEnabled: false,

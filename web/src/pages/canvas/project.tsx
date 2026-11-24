@@ -2031,6 +2031,7 @@ function CanvasViewportPage() {
         batchGenDialogConcurrency,
         batchGenDialogOpen,
         batchGenDialogRowCount,
+        batchGenDialogReferenceCount,
         closeBatchGenDialog,
         confirmBatchGenDialog,
         generateRows: generateBatchRows,
@@ -3735,7 +3736,7 @@ function CanvasViewportPage() {
                                 onConfirmClear={clearCanvas}
                             />
 
-                            <BatchGenerationSettingsDialog open={batchGenDialogOpen} config={batchGenDialogConfig} rowCount={batchGenDialogRowCount} concurrency={batchGenDialogConcurrency} onClose={closeBatchGenDialog} onConfirm={confirmBatchGenDialog} />
+                            <BatchGenerationSettingsDialog open={batchGenDialogOpen} config={batchGenDialogConfig} rowCount={batchGenDialogRowCount} referenceCount={batchGenDialogReferenceCount} concurrency={batchGenDialogConcurrency} onClose={closeBatchGenDialog} onConfirm={confirmBatchGenDialog} />
 
                             <AssetPickerModal
                                 open={assetPickerOpen}

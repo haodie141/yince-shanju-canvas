@@ -43,6 +43,37 @@ func agentMediaFixture(t *testing.T) (*Service, *gorm.DB, cloudAgentMediaArgs) {
 	return s, db, a
 }
 
+func TestCloudAgentGroupedImageWritebackFitsSlot(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		manual bool
+		wantWidth float64
+	}{
+		{name: "fit", wantWidth: 300},
+		{name: "manual", manual: true, wantWidth: 408},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, db, _ := agentMediaFixture(t)
+			node := map[string]any{"id": "grouped-image", "type": "image", "parentId": "scene", "position": map[string]any{"x": 0, "y": 0}, "width": 408, "height": 225, "metadata": map[string]any{"taskId": "image-task", "status": "loading", "manualSize": tc.manual}}
+			raw, _ := json.Marshal(map[string]any{"nodes": []any{node}, "connections": []any{}})
+			if err := db.Model(&model.CanvasProject{}).Where("id = ? AND user_id = ?", "agent-canvas", "user").Update("payload_json", string(raw)).Error; err != nil { t.Fatal(err) }
+			if err := db.Create(&model.Resource{ID: "group-output", UserID: "user", Kind: "image", Status: "ready", MimeType: "image/png", Width: 1152, Height: 864}).Error; err != nil { t.Fatal(err) }
+			task := &model.Task{ID: "image-task", Type: "canvas_image", Status: model.TaskStatusSucceeded, ResultJSON: `{"images":[{"storageKey":"resource:group-output"}]}`}
+			policy, err := s.RuntimePolicy()
+			if err != nil { t.Fatal(err) }
+			if _, err := completeCloudAgentMediaNode(s.repo, "user", "agent-canvas", "grouped-image", task, policy); err != nil { t.Fatal(err) }
+			canvas, err := s.repo.CanvasProjectForUser("user", "agent-canvas")
+			if err != nil { t.Fatal(err) }
+			doc, err := creationDocument(canvas.PayloadJSON)
+			if err != nil { t.Fatal(err) }
+			got := creationMaps(doc["nodes"])[0]
+			if got["width"] != tc.wantWidth || got["height"] != float64(225) { t.Fatalf("size = %v x %v", got["width"], got["height"]) }
+			meta := got["metadata"].(map[string]any)
+			if meta["naturalWidth"] != float64(1152) || meta["naturalHeight"] != float64(864) { t.Fatalf("image dimensions lost: %v", meta) }
+		})
+	}
+}
+
 func agentMediaCall(a cloudAgentMediaArgs) cloudAgentCall {
 	raw, _ := json.Marshal(a)
 	call := cloudAgentCall{ID: "media-call"}

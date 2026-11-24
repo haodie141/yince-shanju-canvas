@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="core" x1="38" y1="34" x2="91" y2="91" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#62E7FF"/>
+      <stop offset="0.48" stop-color="#658BFF"/>
+      <stop offset="1" stop-color="#A56BFF"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="20" y1="22" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5CE7F5"/>
+      <stop offset="0.52" stop-color="#7187FF"/>
+      <stop offset="1" stop-color="#B36BFF"/>
+    </linearGradient>
+    <linearGradient id="node" x1="24" y1="24" x2="105" y2="105" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8BF2FF"/>
+      <stop offset="1" stop-color="#A47AFF"/>
+    </linearGradient>
+    <filter id="softGlow" x="25" y="25" width="78" height="78" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.30 0 0 0 0 0.48 0 0 0 0 1 0 0 0 0.28 0"/>
+    </filter>
+  </defs>
+  <!-- orbital network: intentionally no enclosing tile or background -->
+  <path d="M29 43.5C36.5 25.5 57.5 17 76 23.5C94.5 30 106 48.5 101 67.5" stroke="url(#orbit)" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M99 84.5C88 103 65.5 111 46 102.5C27.5 94.5 18 75.5 24 57" stroke="url(#orbit)" stroke-width="3.2" stroke-linecap="round"/>
+  <!-- three tool / capability nodes -->
+  <path d="M34 38L49 49M94 38L80 49M94 91L80 79" stroke="url(#orbit)" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="27" cy="31" r="8" fill="none" stroke="url(#node)" stroke-width="3.5"/>
+  <circle cx="101" cy="30" r="8" fill="none" stroke="url(#node)" stroke-width="3.5"/>
+  <circle cx="103" cy="99" r="8" fill="none" stroke="url(#node)" stroke-width="3.5"/>
+  <!-- central intelligence core -->
+  <circle cx="64" cy="64" r="29" fill="url(#core)" opacity=".16" filter="url(#softGlow)"/>
+  <path d="M64 34.5L70.8 54.2L90.5 61L70.8 67.8L64 87.5L57.2 67.8L37.5 61L57.2 54.2L64 34.5Z" fill="url(#core)"/>
+  <path d="M64 47L68 59.5L80.5 63.5L68 67.5L64 80L60 67.5L47.5 63.5L60 59.5L64 47Z" fill="#F8FCFF" fill-opacity=".96"/>
+  <!-- subtle signal points -->
+  <circle cx="64" cy="12" r="2.2" fill="#73DFFF"/>
+  <circle cx="116" cy="64" r="2.2" fill="#A67AFF"/>
+  <circle cx="12" cy="76" r="2.2" fill="#73DFFF"/>
+</svg>

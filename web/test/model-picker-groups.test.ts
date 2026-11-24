@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { groupModelsForPicker, modelChannelLabel } from "../src/lib/model-picker-groups";
-import { groupModelsByDisplayName, modelCompatibilityError, modelGroupReferenceLimits, resolveCompatibleModel } from "../src/lib/model-selection";
+import { compatibleModelInGroup, groupModelsByDisplayName, maxModelInputCapacity, modelCompatibilityError, modelGroupReferenceLimits, resolveCompatibleModel } from "../src/lib/model-selection";
 import { modelQuoteRequest, priceTiersForCurrentSelection, priceTierSummaryLabel } from "../src/lib/model-pricing";
 import { systemChannelModelChannels } from "../src/lib/user-session";
 import type { PublicChannelCatalog, PublicChannelModel } from "../src/services/api/logical-models";
@@ -35,6 +35,25 @@ function fixture() {
     ];
     return normalizeConfigSnapshot({ config: { ...defaultConfig, channels: systemChannelModelChannels(channels), model: "b::seedance-2.0", videoModel: "b::seedance-2.0" } }).config;
 }
+
+test("text-only image model is unavailable with a reference while reference-capable models remain selectable", () => {
+    const textOnly = defaultModelCapabilityConfig("openai-image", "image2.6-1k");
+    const editable = defaultModelCapabilityConfig("openai-image", "editable");
+    textOnly.image!.references.maxImages = 0;
+    editable.image!.references.maxImages = 3;
+    const image = (key: string, capabilityConfig: typeof textOnly): PublicChannelModel => ({
+        ...model("", 50_000, key, key), capability: "image", protocol: "openai-image", capabilityConfig,
+    });
+    const channels = systemChannelModelChannels([{ id: "relay", name: "relay", displayName: "relay", models: [image("image2.6-1k", textOnly), image("editable", editable)] }]);
+    const config = normalizeConfigSnapshot({ config: { ...defaultConfig, channels } }).config;
+    const input = { textCount: 1, imageCount: 1, videoCount: 0, audioCount: 0, characterCount: 0 };
+    const requirements = { capability: "image" as const, input };
+    expect(compatibleModelInGroup(config, ["relay::image2.6-1k"], requirements)).toBe("");
+    expect(modelCompatibilityError(config, "relay::image2.6-1k", requirements)).toContain("不支持参考图");
+    expect(compatibleModelInGroup(config, ["relay::editable"], requirements)).toBe("relay::editable");
+    expect(modelCompatibilityError(config, "relay::image2.6-1k", { ...requirements, input: { ...input, imageCount: 0 } })).toBe("");
+    expect(maxModelInputCapacity(config, "image", "image")).toBe(3);
+});
 
 test("same model display name groups all channels and preserves their prices", () => {
     const config = fixture();

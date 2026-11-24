@@ -22,6 +22,17 @@ func TestCloudAgentImageApprovalTreatsAutomaticQualityAsUnspecified(t *testing.T
 	}
 }
 
+func TestCloudAgentVideoApprovalAcceptsMatchingFixedScreen(t *testing.T) {
+	for _, tc := range []struct{ size, quality string; valid bool }{
+		{"9:16", "768p竖", true}, {"16:9", "768p横", true},
+		{"9:16", "768p横", false}, {"1:1", "768p竖", false}, {"9:16", "768p", false},
+	} {
+		resolved := map[string]any{"mode": "video", "config": map[string]any{"vquality": tc.quality}, "capabilityOptions": map[string]any{"vquality": tc.quality}}
+		err := validateCloudAgentResolvedMediaOptions(map[string]any{"size": tc.size, "vquality": tc.quality}, resolved)
+		if (err == nil) != tc.valid { t.Fatalf("size=%s quality=%s: %v", tc.size, tc.quality, err) }
+	}
+}
+
 func TestCloudAgentImageIgnoresUndeclaredModelQualityBeforeApproval(t *testing.T) {
 	s, db, a := agentMediaFixture(t)
 	profile := DefaultModelCapabilityConfigForModel(string(model.ChannelInterfaceGeminiImage), "nano-banana-pro")

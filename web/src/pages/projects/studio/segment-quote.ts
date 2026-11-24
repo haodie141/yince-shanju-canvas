@@ -43,7 +43,7 @@ export function dramaSegmentQuoteMissing(config: AiConfig, choice: DramaModelCho
     const cost = resolveModelChannel(config, model).modelCosts?.find((item) => item.model === modelOptionName(model));
     const tiers = cost?.pricePolicy === "channel" ? cost.logicalPriceTiers || [] : [];
     if (!tiers.length) return false;
-    return priceTiersForCurrentSelection(tiers, "video", config, requirements).length === 0;
+    return priceTiersForCurrentSelection(tiers, "video", { ...config, model }, requirements).length === 0;
 }
 
 /** 目录里与当前选择对应的视频模型选项。 */

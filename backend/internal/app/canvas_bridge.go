@@ -2,12 +2,14 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 
 	"yingce/backend/internal/assets"
 	"yingce/backend/internal/canvas"
 	"yingce/backend/internal/model"
 	"yingce/backend/internal/repository"
+	"gorm.io/gorm"
 )
 
 type (
@@ -87,6 +89,17 @@ func (h canvasHost) CanvasQuotaCheck(userID string) (func(*repository.Repository
 	}, nil
 }
 
+func (h canvasHost) CanvasCloneStorageLimit(userID string) (int64, error) {
+	if h.svc == nil {
+		return 1 << 50, nil
+	}
+	policy, err := h.svc.RuntimePolicy()
+	if err != nil {
+		return 0, err
+	}
+	return h.svc.storedFileLimit(userID, policy)
+}
+
 func (h canvasHost) StructuredQuota(userID, kind string, creating bool, deltaBytes int64) error {
 	if h.svc == nil {
 		return nil
@@ -149,8 +162,14 @@ func (s *Service) CanvasShareStatus(userID string, projectID string) (CanvasShar
 	return s.canvasDomain().CanvasShareStatus(userID, projectID)
 }
 
+func (s *Service) SetCanvasShareCopyPermission(userID string, projectID string, allow bool) (CanvasShareStatus, error) {
+	return s.canvasDomain().SetCanvasShareCopyPermission(userID, projectID, allow)
+}
+
 func (s *Service) CreateCanvasShare(userID string, projectID string, req CanvasShareRequest) (CanvasShareStatus, error) {
-	return s.canvasDomain().CreateCanvasShare(userID, projectID, req)
+	status, err := s.canvasDomain().CreateCanvasShare(userID, projectID, req)
+	if errors.Is(err, repository.ErrShareSnapshotChanged) || errors.Is(err, repository.ErrShareSnapshotResourceUnavailable) { return CanvasShareStatus{}, BadAuthRequest(err.Error()) }
+	return status, err
 }
 
 func (s *Service) DeleteCanvasShare(userID string, projectID string) error {
@@ -159,6 +178,24 @@ func (s *Service) DeleteCanvasShare(userID string, projectID string) error {
 
 func (s *Service) PublicCanvasShare(token string) (PublicCanvasShare, error) {
 	return s.canvasDomain().PublicCanvasShare(token)
+}
+
+func (s *Service) PublicCanvasShareVersion(token, snapshotID string) (PublicCanvasShare, error) {
+	return s.canvasDomain().PublicCanvasShareVersion(token, snapshotID)
+}
+
+func (s *Service) CloneCanvasShare(userID, token, snapshotID, requestID string) (string, error) {
+	id, err := s.canvasDomain().CloneCanvasShare(userID, token, snapshotID, requestID)
+	if errors.Is(err, repository.ErrShareCloneUnavailable) || errors.Is(err, gorm.ErrRecordNotFound) { return "", NotFound("分享链接失效或内容已更新，请重新打开") }
+	if errors.Is(err, repository.ErrShareCloneUnsupportedStorage) || errors.Is(err, repository.ErrUploadStorageLimit) || errors.Is(err, repository.ErrShareCloneRequestConflict) { return "", BadAuthRequest(err.Error()) }
+	if errors.Is(err, gorm.ErrInvalidData) { return "", BadAuthRequest("克隆请求或画布数据无效") }
+	return id, err
+}
+
+func (s *Service) MigrateLegacyCanvasShares(actor *model.User, after string, limit int) (canvas.LegacyShareMigrationResult, error) {
+	if err := s.RequireAdmin(actor); err != nil { return canvas.LegacyShareMigrationResult{}, err }
+	if limit <= 0 || limit > 200 || len(after) > 36 { return canvas.LegacyShareMigrationResult{}, BadAuthRequest("迁移批次参数无效") }
+	return s.canvasDomain().MigrateLegacyCanvasShares(after, limit)
 }
 
 func (s *Service) OpenSharedCanvasResource(token string, resourceID string) (*model.Resource, io.ReadCloser, error) {
@@ -171,6 +208,10 @@ func (s *Service) OpenSharedCanvasResourceRange(token string, resourceID string,
 
 func (s *Service) PrepareSharedCanvasResourceDelivery(token string, resourceID string, options ResourceAccessOptions, rangeHeader string) (*ResourceDelivery, error) {
 	return s.canvasDomain().PrepareSharedCanvasResourceDelivery(token, resourceID, options, rangeHeader)
+}
+
+func (s *Service) PrepareSharedCanvasSnapshotResourceDelivery(token, snapshotID, resourceID string, options ResourceAccessOptions, rangeHeader string) (*ResourceDelivery, error) {
+	return s.canvasDomain().PrepareSharedCanvasSnapshotResourceDelivery(token, snapshotID, resourceID, options, rangeHeader)
 }
 
 func (s *Service) validateCanvasMediaAssets(userID string, raw json.RawMessage) error {

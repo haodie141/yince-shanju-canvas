@@ -602,7 +602,10 @@ export const jaJP: DeepStringRecord<typeof zhCN> = {
         models: {
             image: { title: "デフォルト画像生成モデル", description: "画像生成、画像編集、ビジュアル探索", empty: "現在のチャネルに利用可能な画像モデルがありません" },
             video: { title: "デフォルト動画モデル", description: "テキストから動画、画像から動画、カットの延長", empty: "現在のチャネルに利用可能な動画モデルがありません" },
-            text: { title: "デフォルトテキストモデル", description: "プロンプトの書き換え、脚本、構造化テキスト", empty: "現在のチャネルに利用可能なテキストモデルがありません" },
+            text: { title: "デフォルト Agent テキストモデル", description: "Agent 会話、脚本、構造化テキスト", empty: "現在のチャネルに利用可能なテキストモデルがありません" },
+            optimizer: { title: "デフォルト校正モデル", description: "プロンプト校正とオプティマイザー専用のモデル。エージェントの切り替えに影響されません", empty: "現在のチャネルに利用可能な校正モデルがありません" },
+            optimizerFollow: "デフォルトテキストモデルに従う",
+            optimizerFollowHint: "未設定の場合は上記のデフォルトテキストモデルを使用します",
             audio: { title: "デフォルト音声モデル", description: "音声、効果音、音楽の生成", empty: "現在のチャネルに利用可能な音声モデルがありません" },
             available: "{{count}} 件利用可能",
             uncategorized: "未分類",

@@ -190,7 +190,19 @@ export function mergeCloudAgentConversation(local: CloudAgentConversation, remot
         consumed.add(cached.id);
         return message.role === "user" ? { ...message, ...cached, id: message.id } : { ...cached, ...message };
     });
-    messages.push(...local.messages.filter((message) => !consumed.has(message.id) && !remote.messages.some((entry) => entry.id === message.id)));
+    // 保留只存在本机的消息与相邻已同步消息的先后关系，避免旧错误在每次同步后被移到对话末尾。
+    for (let index = local.messages.length - 1; index >= 0; index--) {
+        const message = local.messages[index];
+        if (consumed.has(message.id) || remote.messages.some((entry) => entry.id === message.id)) continue;
+        const following = local.messages.slice(index + 1).find((entry) => messages.some((item) => item.id === entry.id || submittedUserIds.get(item.id) === entry.id));
+        const position = following ? messages.findIndex((item) => item.id === following.id || submittedUserIds.get(item.id) === following.id) : -1;
+        if (position >= 0) messages.splice(position, 0, message);
+        else {
+            const previous = local.messages.slice(0, index).reverse().find((entry) => messages.some((item) => item.id === entry.id || submittedUserIds.get(item.id) === entry.id));
+            const previousPosition = previous ? messages.findIndex((item) => item.id === previous.id || submittedUserIds.get(item.id) === previous.id) : -1;
+            messages.splice(previousPosition >= 0 ? previousPosition + 1 : messages.length, 0, message);
+        }
+    }
     const newerLocalRun =
         local.run && remote.run?.id === local.run.id && ((local.run.revision || 0) > (remote.run.revision || 0) || (local.lastEventSeq || 0) > (remote.lastEventSeq || 0) || (terminal.has(local.run.status) && !terminal.has(remote.run.status)));
     return {

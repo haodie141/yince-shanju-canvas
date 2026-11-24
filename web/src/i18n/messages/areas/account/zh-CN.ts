@@ -595,7 +595,10 @@ export const zhCN = {
         models: {
             image: { title: "默认生图模型", description: "图片生成、图像编辑与视觉探索", empty: "当前渠道中没有可用的图片模型" },
             video: { title: "默认视频模型", description: "文生视频、图生视频与镜头延展", empty: "当前渠道中没有可用的视频模型" },
-            text: { title: "默认文本模型", description: "提示词改写、脚本与结构化文本", empty: "当前渠道中没有可用的文本模型" },
+            text: { title: "默认 Agent 文本模型", description: "Agent 对话、脚本与结构化文本", empty: "当前渠道中没有可用的文本模型" },
+            optimizer: { title: "默认润色模型", description: "提示词润色与优化器单独使用的模型，不受 Agent 切换影响", empty: "当前渠道中没有可用的润色模型" },
+            optimizerFollow: "跟随默认文本模型",
+            optimizerFollowHint: "未单独指定时使用上面的默认文本模型",
             audio: { title: "默认音频模型", description: "语音、音效与音乐生成", empty: "当前渠道中没有可用的音频模型" },
             available: "{{count}} 个可用",
             uncategorized: "未分类",

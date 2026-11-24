@@ -135,6 +135,7 @@ cd web && bun run dev
 
 ## 7. 本地开发、部署和数据目录
 
+- 闪剧站 `yingce-10001` 重建前端后，必须等 `yingce-10001-web-1` 完成静态资源复制并通过健康检查，再对 `yingce-10001-gateway-1` 执行 `nginx -t` 和 reload，最后验证公网首页与 API；网关缓存上游地址且前端启动期间可能拒绝连接，过早验证会出现 502。
 - 先阅读 `.env.example` 和对应 Compose 文件。宿主机后端开发必须使用 Git 忽略的 `.local/project-workbench-debug`，通过 `CANVAS_BACKEND_DATA_DIR` 显式指定；不要把 `backend/data` 当作开发账号数据库。
 - 本地缓存放 `.local/cache`；不要提交数据库、上传文件、`.env`、真实密钥、构建产物或编辑器配置。
 - 宿主机开发：`backend/` 运行 `CANVAS_BACKEND_DATA_DIR=../.local/project-workbench-debug go run ./cmd/server`，`web/` 使用 Bun 和 Vite；不要用 pnpm/npm 覆盖同一套 `node_modules`，也不要提交 `pnpm-lock.yaml` 或 `package-lock.json`。Docker 热更新使用 `docker-compose.dev.yml`；本地构建运行使用 `docker-compose.local.yml`。

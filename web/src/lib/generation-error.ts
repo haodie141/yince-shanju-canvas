@@ -68,6 +68,7 @@ export function generationFailureMetadata(error: unknown, prompt: string): Gener
 
 export function generationErrorMessage(error: unknown) {
     const original = rawGenerationError(error);
+    if (original.includes("内容审核暂不可用")) return "内容审核暂不可用，请稍后重试。";
     const upstreamIndex = original.indexOf("；上游：");
     if (upstreamIndex >= 0) {
         const prefix = original.slice(0, upstreamIndex).trim();
@@ -105,7 +106,10 @@ export function generationErrorMessage(error: unknown) {
 }
 
 function contentModerationMessage(raw: string) {
-    return CONTENT_MODERATION_MESSAGE;
+    const direct = raw.match(/内容审核未通过，请修改提示词后重新生成：([^\r\n。；]{1,30})/u);
+    const saved = raw.match(/内容审核未通过，本次平台积分未扣除或已退还。请修改提示词后重新生成。 原因：([^\r\n。；]{1,30})/u);
+    const reason = (direct?.[1] || saved?.[1] || "").trim();
+    return reason ? `${CONTENT_MODERATION_MESSAGE} 原因：${reason}` : CONTENT_MODERATION_MESSAGE;
 }
 
 function sanitizeUserVisibleError(value: string) {

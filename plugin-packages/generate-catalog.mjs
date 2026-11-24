@@ -440,7 +440,7 @@ add({
     )),
     audio_config: {
       format: coalesce(ref("request.extra.audioFormat"), "mp3"),
-      speech_rate: omit(conditional(ne(toFloat(ref("request.extra.audioSpeed")), 0), addNumbers(multiply(toFloat(ref("request.extra.audioSpeed")), 100), -100)))
+      speech_rate: addNumbers(multiply(conditional(gt(toFloat(ref("request.extra.audioSpeed")), 0), toFloat(ref("request.extra.audioSpeed")), 1), 100), -100)
     }
   }, {
     headers: {

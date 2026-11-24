@@ -20,20 +20,27 @@ import (
 )
 
 type CanvasShareRequest struct {
-	ExpiresDays int  `json:"expiresDays"`
-	Rotate      bool `json:"rotate"`
+	ExpiresDays    int  `json:"expiresDays"`
+	Rotate         bool `json:"rotate"`
+	AllowCopy      bool `json:"allowCopy"`
+	PreserveExpiry bool `json:"preserveExpiry"`
 }
 
 type CanvasShareStatus struct {
-	Enabled   bool       `json:"enabled"`
-	Token     string     `json:"token,omitempty"`
-	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	Enabled    bool       `json:"enabled"`
+	AllowCopy  bool       `json:"allowCopy"`
+	Token      string     `json:"token,omitempty"`
+	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
+	CreatedAt  *time.Time `json:"createdAt,omitempty"`
+	SnapshotAt *time.Time `json:"snapshotAt,omitempty"`
 }
 
 type PublicCanvasShare struct {
-	Project   map[string]any `json:"project"`
-	ExpiresAt *time.Time     `json:"expiresAt,omitempty"`
+	Project    map[string]any `json:"project"`
+	AllowCopy  bool           `json:"allowCopy"`
+	CopyIssues []string       `json:"copyIssues,omitempty"`
+	ExpiresAt  *time.Time     `json:"expiresAt,omitempty"`
+	SnapshotID string         `json:"snapshotId,omitempty"`
 }
 
 var publicCanvasMetadataKeys = map[string]bool{
@@ -53,6 +60,7 @@ var publicCanvasMetadataKeys = map[string]bool{
 	"previsPreviewNodeId": true, "previsDepthNodeId": true, "previsDepthVideoNodeId": true, "previsNormalNodeId": true,
 	"skillId": true, "skillVersion": true, "skillSnapshot": true, "storyboard": true,
 	"storyboardShotDuration": true, "storyboardShotCount": true, "storyboardComposerHeight": true, "frame": true,
+	"mediaVersions": true, "currentMediaVersionId": true, "videoPreview": true, "references": true,
 }
 
 var publicCanvasForbiddenKeys = map[string]bool{
@@ -79,14 +87,23 @@ func (s *Service) CreateCanvasShare(userID string, projectID string, req CanvasS
 	if req.ExpiresDays < 0 || req.ExpiresDays > 365 {
 		return CanvasShareStatus{}, kernel.BadAuthRequest("分享有效期必须在 0 到 365 天之间")
 	}
-	if _, err := s.repo.CanvasProjectForUser(userID, projectID); err != nil {
+	project, err := s.repo.CanvasProjectForUser(userID, projectID)
+	if err != nil {
+		return CanvasShareStatus{}, err
+	}
+	prepared, err := prepareShareSnapshot(project)
+	if err != nil {
 		return CanvasShareStatus{}, err
 	}
 	share, err := s.repo.CanvasShareForProject(userID, projectID)
+	var expected *model.CanvasShare
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		share = &model.CanvasShare{ID: kernel.NewID(), UserID: userID, ProjectID: projectID}
 	} else if err != nil {
 		return CanvasShareStatus{}, err
+	} else {
+		copy := *share
+		expected = &copy
 	}
 	if req.Rotate || strings.TrimSpace(share.TokenCipher) == "" {
 		token, tokenErr := newCanvasShareToken()
@@ -100,14 +117,21 @@ func (s *Service) CreateCanvasShare(userID string, projectID string, req CanvasS
 		}
 	}
 	share.Enabled = true
-	share.ExpiresAt = nil
-	if req.ExpiresDays > 0 {
-		expiresAt := time.Now().Add(time.Duration(req.ExpiresDays) * 24 * time.Hour)
-		share.ExpiresAt = &expiresAt
+	share.AllowCopy = req.AllowCopy
+	share.RevokedAt = nil
+	share.CanvasDeletedAt = nil
+	if !req.PreserveExpiry || expected == nil {
+		share.ExpiresAt = nil
+		if req.ExpiresDays > 0 {
+			expiresAt := time.Now().Add(time.Duration(req.ExpiresDays) * 24 * time.Hour)
+			share.ExpiresAt = &expiresAt
+		}
 	}
-	if err := s.repo.Save(share); err != nil {
+	snapshot := &model.CanvasShareSnapshot{ID: kernel.NewID(), ShareID: share.ID, UserID: userID, CanvasID: projectID, SourceRevision: prepared.Project.Revision, Title: prepared.Project.Title, PayloadJSON: prepared.Project.PayloadJSON, CreatedAt: time.Now()}
+	if err := s.repo.SaveCanvasShareAndPublish(share, expected, snapshot, prepared.ResourceIDs); err != nil {
 		return CanvasShareStatus{}, err
 	}
+	share.CurrentSnapshotID = &snapshot.ID
 	return s.canvasShareStatus(share)
 }
 
@@ -118,16 +142,208 @@ func (s *Service) DeleteCanvasShare(userID string, projectID string) error {
 	return s.repo.DeleteCanvasShare(userID, projectID)
 }
 
+func (s *Service) SetCanvasShareCopyPermission(userID string, projectID string, allow bool) (CanvasShareStatus, error) {
+	if _, err := s.repo.CanvasProjectForUser(userID, projectID); err != nil {
+		return CanvasShareStatus{}, err
+	}
+	share, err := s.repo.SetCanvasShareCopyPermission(userID, projectID, allow)
+	if err != nil {
+		return CanvasShareStatus{}, err
+	}
+	return s.canvasShareStatus(share)
+}
+
 func (s *Service) PublicCanvasShare(token string) (PublicCanvasShare, error) {
-	share, project, err := s.sharedCanvasProject(token)
+	return s.PublicCanvasShareVersion(token, "")
+}
+
+type publicCanvasAccess struct {
+	share      *model.CanvasShare
+	featured   *model.FeaturedCanvas
+	snapshot   *model.CanvasShareSnapshot
+	snapshotID string
+	project    *model.CanvasProject
+	allowCopy  bool
+	expiresAt  *time.Time
+}
+
+// resolvePublicCanvasAccess accepts both regular share tokens and platform
+// featured-copy tokens. A featured copy with a ready snapshot stays readable
+// after the source canvas is deleted; if the source share still exists and was
+// explicitly closed, expired or had copy permission revoked, access is denied.
+func (s *Service) resolvePublicCanvasAccess(token string, snapshotID string) (*publicCanvasAccess, error) {
+	token = strings.TrimSpace(token)
+	if len(token) < 32 || len(token) > 128 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	hash := canvasShareTokenHash(token)
+	share, err := s.repo.CanvasShareByTokenHash(hash)
+	if err == nil {
+		if !share.Enabled || (share.ExpiresAt != nil && !share.ExpiresAt.After(time.Now())) {
+			return nil, gorm.ErrRecordNotFound
+		}
+		access := &publicCanvasAccess{share: share, allowCopy: share.AllowCopy, expiresAt: share.ExpiresAt}
+		if snapshotID != "" {
+			if assets.ValidID(snapshotID) != snapshotID {
+				return nil, gorm.ErrRecordNotFound
+			}
+			snapshot, err := s.repo.CanvasShareSnapshot(share, snapshotID)
+			if err != nil {
+				return nil, err
+			}
+			access.snapshot, access.snapshotID, access.project = snapshot, snapshot.ID, canvasSnapshotProject(snapshot)
+			return access, nil
+		}
+		if share.CurrentSnapshotID != nil {
+			snapshot, err := s.repo.CanvasShareSnapshot(share, *share.CurrentSnapshotID)
+			if err != nil {
+				return nil, err
+			}
+			access.snapshot, access.snapshotID, access.project = snapshot, snapshot.ID, canvasSnapshotProject(snapshot)
+			return access, nil
+		}
+		// Legacy links remain readable until their first explicit snapshot migration.
+		project, err := s.repo.CanvasProjectForUser(share.UserID, share.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		access.project = project
+		return access, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	entry, err := s.repo.FeaturedCopyByTokenHash(hash)
+	if err != nil {
+		return nil, err
+	}
+	if !entry.Enabled || !entry.PersistCopy || entry.CopyStatus != "ready" || entry.CopySnapshotID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if snapshotID != "" && snapshotID != entry.CopySnapshotID {
+		return nil, gorm.ErrRecordNotFound
+	}
+	snapshot, err := s.repo.FeaturedSnapshot(entry.CopySnapshotID)
+	if err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	sourceShare, err := s.repo.CanvasShareByID(snapshot.ShareID)
+	if err == nil {
+		if sourceShare.RevokedAt != nil {
+			return nil, gorm.ErrRecordNotFound
+		}
+		if sourceShare.CanvasDeletedAt == nil {
+			if !sourceShare.Enabled || !sourceShare.AllowCopy || (sourceShare.ExpiresAt != nil && !sourceShare.ExpiresAt.After(time.Now())) {
+				return nil, gorm.ErrRecordNotFound
+			}
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	synthetic := &model.CanvasShare{ID: snapshot.ShareID, UserID: snapshot.UserID, ProjectID: snapshot.CanvasID, Enabled: true, AllowCopy: true, CurrentSnapshotID: &snapshot.ID}
+	return &publicCanvasAccess{share: synthetic, featured: entry, snapshot: snapshot, snapshotID: snapshot.ID, project: canvasSnapshotProject(snapshot), allowCopy: true}, nil
+}
+
+func (s *Service) PublicCanvasShareVersion(token, snapshotID string) (PublicCanvasShare, error) {
+	access, err := s.resolvePublicCanvasAccess(token, snapshotID)
 	if err != nil {
 		return PublicCanvasShare{}, err
 	}
-	publicProject, _, err := publicCanvasProject(project, token)
+	resourceScope := token
+	if access.snapshotID != "" {
+		resourceScope += "/snapshots/" + access.snapshotID
+	}
+	publicProject, _, err := publicCanvasProject(access.project, resourceScope)
 	if err != nil {
 		return PublicCanvasShare{}, err
 	}
-	return PublicCanvasShare{Project: publicProject, ExpiresAt: share.ExpiresAt}, nil
+	issues := canvasShareCopyIssues(access.project, access.allowCopy)
+	result := PublicCanvasShare{Project: publicProject, AllowCopy: access.allowCopy, CopyIssues: issues, ExpiresAt: access.expiresAt, SnapshotID: access.snapshotID}
+	return result, nil
+}
+
+func canvasShareCopyIssues(project *model.CanvasProject, allowCopy bool) []string {
+	var issues []string
+	if allowCopy {
+		var source map[string]any
+		if json.Unmarshal([]byte(project.PayloadJSON), &source) == nil {
+			nodes, _ := source["nodes"].([]any)
+			for _, raw := range nodes {
+				node, _ := raw.(map[string]any)
+				kind := kernel.StringValue(node["type"])
+				meta, _ := node["metadata"].(map[string]any)
+				title := kernel.DefaultString(kernel.StringValue(node["title"]), "未命名节点")
+				if kind == "drawing" {
+					issues = append(issues, title+"：绘图内容暂不支持复制")
+					continue
+				}
+				if kind != "image" && kind != "video" && kind != "audio" && kind != "text" && kind != "frame" && kind != "script" {
+					issues = append(issues, title+"：此类节点暂不支持完整复制")
+					continue
+				}
+				for _, key := range []string{"subtitleEntries", "imageLayerGroup", "generationBatches", "drawingId"} {
+					if meta[key] != nil {
+						issues = append(issues, title+"：节点包含暂不支持复制的内容")
+						break
+					}
+				}
+				if versions, ok := meta["mediaVersions"].([]any); ok {
+					for _, version := range versions {
+						entry, _ := version.(map[string]any)
+						media, _ := entry["media"].(map[string]any)
+						if hasUnshareableMedia(media) {
+							issues = append(issues, title+"：历史版本素材尚未保存到云端")
+							break
+						}
+					}
+				}
+				if preview, ok := meta["videoPreview"].(map[string]any); ok && hasUnshareableMedia(preview) {
+					issues = append(issues, title+"：视频预览素材尚未保存到云端")
+				}
+				for key, value := range meta {
+					if key == "content" || key == "storageKey" {
+						continue
+					}
+					encoded, _ := json.Marshal(value)
+					if strings.Contains(string(encoded), "resource:") || strings.Contains(string(encoded), "/api/resources/") {
+						if publicCanvasMetadataKeys[key] {
+							continue
+						}
+						issues = append(issues, title+"：节点内的附加素材暂不支持复制")
+						break
+					}
+				}
+				if kind != "image" && kind != "video" && kind != "audio" {
+					continue
+				}
+				key, content := kernel.StringValue(meta["storageKey"]), kernel.StringValue(meta["content"])
+				if (key != "" || content != "") && assets.ResourceID(key) == "" && assets.ResourceID(content) == "" {
+					issues = append(issues, title+"：素材尚未保存到云端或无法识别")
+				}
+			}
+		}
+	}
+	return issues
+}
+
+func hasUnshareableMedia(media map[string]any) bool {
+	key, content := kernel.StringValue(media["storageKey"]), kernel.StringValue(media["content"])
+	if (key != "" || content != "") && assets.ResourceID(key) == "" && assets.ResourceID(content) == "" {
+		return true
+	}
+	for _, field := range []string{"videoPreview", "imageRotation", "original", "variants"} {
+		if nested, ok := media[field].(map[string]any); ok {
+			if hasUnshareableMedia(nested) {
+				return true
+			}
+			for _, value := range nested {
+				if child, ok := value.(map[string]any); ok && hasUnshareableMedia(child) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (s *Service) OpenSharedCanvasResource(token string, resourceID string) (*model.Resource, io.ReadCloser, error) {
@@ -157,6 +373,41 @@ func (s *Service) PrepareSharedCanvasResourceDelivery(token string, resourceID s
 	return s.host.PrepareResourceDelivery(userID, resource, options, rangeHeader)
 }
 
+// PrepareSharedCanvasSnapshotResourceDelivery keeps media requests bound to
+// the version already opened by the visitor, even when the share is updated.
+func (s *Service) PrepareSharedCanvasSnapshotResourceDelivery(token, snapshotID, resourceID string, options assets.AccessOptions, rangeHeader string) (*assets.ResourceDelivery, error) {
+	if assets.ValidID(snapshotID) != snapshotID || snapshotID == "" || assets.ValidID(resourceID) != resourceID || resourceID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	access, err := s.resolvePublicCanvasAccess(token, snapshotID)
+	if err != nil {
+		return nil, err
+	}
+	if access.snapshot == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	_, allowed, err := publicCanvasProject(access.project, token)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed[resourceID] {
+		return nil, gorm.ErrRecordNotFound
+	}
+	pin, err := s.repo.CanvasShareSnapshotResource(snapshotID, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	var resource model.Resource
+	if json.Unmarshal([]byte(pin.ResourceJSON), &resource) != nil || resource.ID != resourceID || resource.UserID != access.share.UserID || resource.Status != model.ResourceStatusReady || resource.Provider != pin.Provider || resource.Endpoint != pin.Endpoint || resource.Bucket != pin.Bucket || resource.ObjectKey != pin.ObjectKey {
+		return nil, gorm.ErrRecordNotFound
+	}
+	resource.StorageSettingID = pin.StorageSettingID
+	if access.expiresAt != nil {
+		options.ExpiresAt = *access.expiresAt
+	}
+	return s.host.PrepareResourceDelivery(access.share.UserID, &resource, options, rangeHeader)
+}
+
 func (s *Service) sharedCanvasResource(token string, resourceID string) (string, *model.Resource, *model.CanvasShare, error) {
 	share, project, err := s.sharedCanvasProject(token)
 	if err != nil {
@@ -177,19 +428,15 @@ func (s *Service) sharedCanvasResource(token string, resourceID string) (string,
 }
 
 func (s *Service) sharedCanvasProject(token string) (*model.CanvasShare, *model.CanvasProject, error) {
-	token = strings.TrimSpace(token)
-	if len(token) < 32 || len(token) > 128 {
-		return nil, nil, gorm.ErrRecordNotFound
-	}
-	share, err := s.repo.CanvasShareByTokenHash(canvasShareTokenHash(token))
+	access, err := s.resolvePublicCanvasAccess(token, "")
 	if err != nil {
 		return nil, nil, err
 	}
-	if share.ExpiresAt != nil && !share.ExpiresAt.After(time.Now()) {
-		return nil, nil, gorm.ErrRecordNotFound
-	}
-	project, err := s.repo.CanvasProjectForUser(share.UserID, share.ProjectID)
-	return share, project, err
+	return access.share, access.project, nil
+}
+
+func canvasSnapshotProject(snapshot *model.CanvasShareSnapshot) *model.CanvasProject {
+	return &model.CanvasProject{ID: snapshot.CanvasID, UserID: snapshot.UserID, Title: snapshot.Title, PayloadJSON: snapshot.PayloadJSON, Revision: snapshot.SourceRevision, UpdatedAt: snapshot.CreatedAt}
 }
 
 func (s *Service) canvasShareStatus(share *model.CanvasShare) (CanvasShareStatus, error) {
@@ -201,7 +448,15 @@ func (s *Service) canvasShareStatus(share *model.CanvasShare) (CanvasShareStatus
 		return CanvasShareStatus{}, err
 	}
 	createdAt := share.CreatedAt
-	return CanvasShareStatus{Enabled: true, Token: token, ExpiresAt: share.ExpiresAt, CreatedAt: &createdAt}, nil
+	result := CanvasShareStatus{Enabled: true, AllowCopy: share.AllowCopy, Token: token, ExpiresAt: share.ExpiresAt, CreatedAt: &createdAt}
+	if share.CurrentSnapshotID != nil {
+		snapshot, err := s.repo.CanvasShareSnapshot(share, *share.CurrentSnapshotID)
+		if err != nil {
+			return CanvasShareStatus{}, err
+		}
+		result.SnapshotAt = &snapshot.CreatedAt
+	}
+	return result, nil
 }
 
 func newCanvasShareToken() (string, error) {
@@ -229,6 +484,7 @@ func publicCanvasProject(project *model.CanvasProject, token string) (map[string
 		"createdAt":      source["createdAt"],
 		"updatedAt":      source["updatedAt"],
 		"backgroundMode": source["backgroundMode"],
+		"appearance":     scrubPublicCanvasValue(source["appearance"]),
 		"showImageInfo":  source["showImageInfo"],
 		"viewport":       scrubPublicCanvasValue(source["viewport"]),
 		"connections":    publicCanvasConnections(source["connections"]),
@@ -278,7 +534,7 @@ func publicCanvasNode(value any, token string, allowedResources map[string]bool)
 		if !publicCanvasMetadataKeys[key] {
 			continue
 		}
-		publicMetadata[key] = scrubPublicCanvasValue(value)
+		publicMetadata[key] = publicCanvasMetadataValue(value, token, allowedResources)
 	}
 	if resourceID := assets.ResourceID(kernel.StringValue(metadata["storageKey"])); resourceID != "" {
 		allowedResources[resourceID] = true
@@ -292,6 +548,46 @@ func publicCanvasNode(value any, token string, allowedResources map[string]bool)
 	delete(publicMetadata, "storageKey")
 	result["metadata"] = publicMetadata
 	return result, true
+}
+
+// Only metadata explicitly included in the public projection reaches this
+// function. Rewrite embedded owned resources to share-scoped URLs; never pass
+// the owner's storage keys or task identifiers to the visitor.
+func publicCanvasMetadataValue(value any, token string, allowedResources map[string]bool) any {
+	switch item := value.(type) {
+	case map[string]any:
+		result := map[string]any{}
+		for key, child := range item {
+			if publicCanvasForbiddenKeys[key] && key != "references" {
+				continue
+			}
+			if key == "previewContent" && assets.ResourceID(kernel.StringValue(child)) == "" {
+				continue
+			}
+			result[key] = publicCanvasMetadataValue(child, token, allowedResources)
+		}
+		if id := assets.ResourceID(kernel.StringValue(item["storageKey"])); id != "" {
+			allowedResources[id] = true
+			result["content"] = sharedCanvasResourceURL(token, id)
+		} else if content := kernel.StringValue(item["content"]); strings.HasPrefix(content, "blob:") || strings.HasPrefix(content, "data:") {
+			delete(result, "content")
+		}
+		return result
+	case []any:
+		result := make([]any, len(item))
+		for i, child := range item {
+			result[i] = publicCanvasMetadataValue(child, token, allowedResources)
+		}
+		return result
+	case string:
+		if id := assets.ResourceID(item); id != "" {
+			allowedResources[id] = true
+			return sharedCanvasResourceURL(token, id)
+		}
+		return item
+	default:
+		return item
+	}
 }
 
 func scrubPublicCanvasValue(value any) any {

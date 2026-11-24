@@ -138,7 +138,7 @@ export function modelCompatibilityError(config: AiConfig, model: string, require
         if (!input) return "";
         if (input.videoCount > 0) return "图片模型不支持参考视频";
         if (input.audioCount > 0) return "图片模型不支持参考音频";
-        if (visualInputCount > image.references.maxImages) return `最多支持 ${image.references.maxImages} 张参考图`;
+        if (visualInputCount > image.references.maxImages) return image.references.maxImages ? `最多支持 ${image.references.maxImages} 张参考图` : "该模型不支持参考图，请选择支持图生图的模型";
         return "";
     }
 

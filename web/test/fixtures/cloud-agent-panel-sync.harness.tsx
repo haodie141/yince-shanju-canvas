@@ -32,6 +32,7 @@ const skillsApi = await import("@/services/api/skills");
 const { setActiveUserScope } = await import("@/lib/user-scope");
 const { useUserStore } = await import("@/stores/use-user-store");
 const { useGlobalAgentStore } = await import("@/stores/use-global-agent-store");
+const { useCanvasStore } = await import("@/stores/canvas/use-canvas-store");
 const { createModelChannel, defaultConfig, normalizeConfigSnapshot, useConfigStore } = await import("@/stores/use-config-store");
 const { ApiError } = await import("@/services/api/request");
 
@@ -46,6 +47,7 @@ const sendInputs: Array<Record<string, any>> = [];
 let sendFailure: Error | undefined;
 let capabilitiesOverride: (() => Promise<unknown>) | undefined;
 let sendOverride: (() => Promise<{ run: AgentRun }>) | undefined;
+let prepareOverride: ((id: string) => Promise<void>) | undefined;
 const refreshRequests: Array<{ observedConversationIds?: string[]; canvasId?: string }> = [];
 let generated = 0;
 let composer: Record<string, any>;
@@ -136,7 +138,7 @@ mock.module("@/services/api/skills", () => ({
         throw new Error("不应安装技能");
     },
 }));
-mock.module("@/services/user-data-sync", () => ({ prepareCanvasForCloudAction: async () => {}, applyAgentCanvasPatches: async () => {}, refreshCanvasAfterAgent: async () => {} }));
+mock.module("@/services/user-data-sync", () => ({ prepareCanvasForCloudAction: async (id: string) => prepareOverride?.(id), applyAgentCanvasPatches: async () => {}, refreshCanvasAfterAgent: async () => {} }));
 mock.module("@/components/skills/skill-curation-browser", () => ({ useSkillCuration: () => ({ curation: null }), curationQuery: () => ({}) }));
 mock.module("@/components/canvas/canvas-cloud-agent-chat-ui", () => ({
     AGENT_SCENE_DEFS: [],
@@ -146,6 +148,7 @@ mock.module("@/components/canvas/canvas-cloud-agent-chat-ui", () => ({
         return (
             <>
                 {props.left}
+                {props.tray}
                 <textarea aria-label="草稿" value={props.prompt} readOnly />
             </>
         );
@@ -268,6 +271,30 @@ function configureModels(ambiguous: boolean) {
     const config = normalizeConfigSnapshot({ config: { ...defaultConfig, channels, textModel: "paid-channel::paid-model", model: "paid-channel::paid-model" } }).config;
     useConfigStore.setState({ config });
 }
+
+test("新建画布先保存后读取 Agent 对话，保存失败后可重试", async () => {
+    setActiveUserScope("sync-user");
+    useCanvasStore.getState().createDraftProject("新画布", "shared-canvas");
+    let attempts = 0;
+    prepareOverride = async (id) => {
+        expect(id).toBe("shared-canvas");
+        attempts++;
+        useCanvasStore.getState().materializeDraft(id);
+        if (attempts === 1) throw new Error("暂时无法保存");
+    };
+    const mounted = await mount(chat("new-canvas", null), []);
+    try {
+        expect(attempts).toBe(1);
+        expect(refreshRequests).toHaveLength(0);
+        await focus();
+        expect(attempts).toBe(2);
+        expect(refreshRequests.some((item) => item.canvasId === "shared-canvas")).toBe(true);
+    } finally {
+        prepareOverride = undefined;
+        useCanvasStore.getState().deleteProjects(["shared-canvas"]);
+        await mounted.close();
+    }
+});
 
 test("手机空缓存接续同画布桌面会话，审批被另一端处理后自动收敛且不重复提交", async () => {
     const waiting = makeRun("desktop", "waiting_approval");
@@ -678,6 +705,33 @@ test("思考期间快速切换模型只改变下一轮设置，当前订阅和�
         expect(local.find((item) => item.id === activeId)?.run).toMatchObject({ id: "thinking", status: "running", model: "paid-model" });
         expect(sent).toHaveLength(0);
         expect(generated).toBe(0);
+    } finally {
+        await mounted.close();
+    }
+});
+
+test("请求发送中不显示红色重试，失败后保留原请求并可重试", async () => {
+    const initial = chat("original", makeRun("first"));
+    const mounted = await mount(initial, [initial]);
+    let rejectRequest: ((reason: Error) => void) | undefined;
+    try {
+        sendOverride = () => new Promise((_resolve, reject) => { rejectRequest = reject; });
+        await act(async () => composer.onPromptChange("第一条消息"));
+        await act(async () => { composer.onSubmit(); await settle(); });
+        expect(rejectRequest).toBeDefined();
+        expect(pending?.request?.prompt).toBe("第一条消息");
+        await act(async () => composer.onPromptChange("下一条草稿"));
+        expect(mounted.host.querySelector(".agent-outbox-row.is-failed")).toBeNull();
+        await act(async () => { rejectRequest!(new TypeError("network failed after POST")); await settle(); });
+        expect(mounted.host.querySelector(".agent-outbox-row.is-failed")).not.toBeNull();
+        const frozen = structuredClone(sendInputs[0]);
+        expect(pending?.request).toEqual(frozen);
+        expect(composer.prompt).toBe("下一条草稿");
+        sendOverride = undefined;
+        await act(async () => { (mounted.host.querySelector(".agent-outbox-row.is-failed button") as HTMLButtonElement).click(); await settle(); });
+        expect(sendInputs[1]).toEqual(frozen);
+        expect(pending).toBeNull();
+        expect(composer.prompt).toBe("下一条草稿");
     } finally {
         await mounted.close();
     }

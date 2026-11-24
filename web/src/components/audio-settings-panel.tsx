@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Input, InputNumber, Radio } from "antd";
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
-import { audioFormatOptionsForConfig, audioSpeedLabel, audioVoiceOptionsForConfig, isDoubaoAudioConfig, normalizeAudioFormatForConfig, normalizeAudioSpeedValue, normalizeAudioVoiceForConfig } from "@/lib/audio-generation";
+import { audioFormatOptionsForConfig, audioSpeedLabel, audioVoiceOptionsForConfig, isDoubaoAudioConfig, isShanjuTTSConfig, normalizeAudioFormatForConfig, normalizeAudioSpeedValue, normalizeAudioVoiceForConfig } from "@/lib/audio-generation";
 import type { CanvasTheme } from "@/lib/canvas-theme";
 import type { AiConfig } from "@/stores/use-config-store";
 import type { CanvasAudioSettingKey } from "@/components/canvas/canvas-audio-settings-popover";
@@ -84,7 +84,7 @@ export function AudioSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         <p className="leading-5">参考图片：最多连接 1 张图片，写清要说的台词；不要与参考音频混用。</p>
                         <p className="leading-5">当前豆包协议没有独立发送声音指令、语言和方言参数；这些要求写入节点提示词，不保证每项都能精确执行。</p>
                     </details>
-                ) : (
+                ) : isShanjuTTSConfig(config) ? null : (
                     <label className="flex flex-col gap-2 text-xs" style={{ color: theme.node.muted }}>
                         声音指令
                         <Input.TextArea aria-label="声音指令" rows={3} value={config.audioInstructions || ""} placeholder="例如：自然、温暖的旁白" onChange={(event) => onConfigChange("audioInstructions", event.target.value)} />

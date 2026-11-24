@@ -3,7 +3,7 @@ import { Button, Input, Modal } from "antd";
 import { X, PenLine } from "lucide-react";
 import { ModelPicker } from "@/components/model-picker";
 import type { AiConfig } from "@/stores/use-config-store";
-import { defaultImageParamsForModel } from "@/lib/model-selection";
+import { defaultImageParamsForModel, modelCompatibilityError, type ModelRequirements } from "@/lib/model-selection";
 
 export type CanvasImageEditPayload = { prompt: string; generationConfig?: Partial<Pick<AiConfig, "model" | "imageModel" | "size" | "quality" | "transparentBackground">> };
 
@@ -24,6 +24,8 @@ export function CanvasNodeImageEditDialog({
 }) {
     const [prompt, setPrompt] = useState(preset === "remove-background" ? "移除图片背景，保留主体完整轮廓、细节和边缘，输出透明背景。" : "");
     const [generationConfig, setGenerationConfig] = useState<AiConfig>(config);
+    const requirements: ModelRequirements = { capability: "image", input: { textCount: 1, imageCount: 1, videoCount: 0, audioCount: 0, characterCount: 0 } };
+    const referenceError = modelCompatibilityError(generationConfig, generationConfig.imageModel || generationConfig.model, requirements);
 
     useEffect(() => {
         if (open) setPrompt(preset === "remove-background" ? "移除图片背景，保留主体完整轮廓、细节和边缘，输出透明背景。" : "");
@@ -54,6 +56,7 @@ export function CanvasNodeImageEditDialog({
                             config={generationConfig}
                             value={generationConfig.imageModel || generationConfig.model}
                             capability="image"
+                            requirements={requirements}
                             fullWidth
                             showSelectedPrice={false}
                             onChange={(model) => setGenerationConfig((current) => ({ ...current, model, imageModel: model, ...defaultImageParamsForModel(current, model) }))}
@@ -61,7 +64,7 @@ export function CanvasNodeImageEditDialog({
                     </div>
                     <div className="mt-auto flex justify-end gap-2">
                         <Button icon={<X className="size-4" />} onClick={onClose}>取消</Button>
-                        <Button type="primary" icon={<PenLine className="size-4" />} disabled={!prompt.trim()} onClick={() => onConfirm({ prompt: prompt.trim(), generationConfig: { model: generationConfig.model, imageModel: generationConfig.imageModel, size: generationConfig.size, quality: generationConfig.quality, ...(preset === "remove-background" ? { transparentBackground: "true" } : {}) } })}>
+                        <Button type="primary" icon={<PenLine className="size-4" />} disabled={!prompt.trim() || Boolean(referenceError)} title={referenceError || undefined} onClick={() => onConfirm({ prompt: prompt.trim(), generationConfig: { model: generationConfig.model, imageModel: generationConfig.imageModel, size: generationConfig.size, quality: generationConfig.quality, ...(preset === "remove-background" ? { transparentBackground: "true" } : {}) } })}>
                             开始编辑
                         </Button>
                     </div>

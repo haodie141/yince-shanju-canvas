@@ -602,7 +602,10 @@ export const deDE: DeepStringRecord<typeof zhCN> = {
         models: {
             image: { title: "Standard-Bildmodell", description: "Bildgenerierung, Bildbearbeitung und visuelle Erkundung", empty: "In den aktuellen Kanälen ist kein Bildmodell verfügbar" },
             video: { title: "Standard-Videomodell", description: "Text-zu-Video, Bild-zu-Video und Einstellungsverlängerung", empty: "In den aktuellen Kanälen ist kein Videomodell verfügbar" },
-            text: { title: "Standard-Textmodell", description: "Prompt-Umformulierung, Drehbücher und strukturierter Text", empty: "In den aktuellen Kanälen ist kein Textmodell verfügbar" },
+            text: { title: "Standard-Agent-Textmodell", description: "Agent-Konversationen, Drehbücher und strukturierter Text", empty: "In den aktuellen Kanälen ist kein Textmodell verfügbar" },
+            optimizer: { title: "Standard-Polier-Modell", description: "Modell für Prompt-Politur und Optimierer, unabhängig vom Agent-Modell", empty: "In den aktuellen Kanälen ist kein Polier-Modell verfügbar" },
+            optimizerFollow: "Standard-Textmodell folgen",
+            optimizerFollowHint: "Verwendet das oben gewählte Standard-Textmodell, wenn nicht gesetzt",
             audio: { title: "Standard-Audiomodell", description: "Sprache, Soundeffekte und Musikgenerierung", empty: "In den aktuellen Kanälen ist kein Audiomodell verfügbar" },
             available: "{{count}} verfügbar",
             uncategorized: "Ohne Kategorie",

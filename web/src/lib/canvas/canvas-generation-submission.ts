@@ -3,6 +3,7 @@ import { canonicalize } from "json-canonicalize";
 import type { NodeGenerationContext } from "@/components/canvas/canvas-node-generation";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import { generationPromptFingerprint } from "@/lib/generation-error";
+import type { CanvasNodeData } from "@/types/canvas";
 
 type GenerationReference = NodeGenerationContext["referenceImages"][number] | NodeGenerationContext["referenceVideos"][number] | NodeGenerationContext["referenceAudios"][number];
 
@@ -44,6 +45,14 @@ export type CanvasGenerationRequestFingerprintInput = {
  */
 export function canvasGenerationPromptMetadata(composerContent: string, effectivePrompt: string) {
     return { composerContent, prompt: effectivePrompt };
+}
+
+/** 仅撤销尚未提交任务的准备状态，不覆盖后来绑定的任务或用户对节点的编辑。 */
+export function restoreCanvasGenerationPreparation(node: CanvasNodeData, original: CanvasNodeData | undefined, startedAt: string): CanvasNodeData {
+    const metadata = node.metadata;
+    if (!metadata || metadata.status !== "loading" || metadata.taskStage !== "正在准备参考素材" || metadata.taskCreatedAt !== startedAt || metadata.taskId !== original?.metadata?.taskId) return node;
+    const previous = original?.metadata;
+    return { ...node, metadata: { ...metadata, status: previous?.status, taskStage: previous?.taskStage, taskProgress: previous?.taskProgress, taskCreatedAt: previous?.taskCreatedAt, errorDetails: previous?.errorDetails, generationErrorCode: previous?.generationErrorCode, resourceReloadAvailable: previous?.resourceReloadAvailable, failedPromptFingerprint: previous?.failedPromptFingerprint } };
 }
 
 export function canvasGenerationRequestFingerprint(input: CanvasGenerationRequestFingerprintInput) {

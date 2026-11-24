@@ -16,6 +16,7 @@ export type CloudAgentConversationMessage = {
     streaming?: boolean;
     reasoning?: boolean;
     planItems?: Array<{ id: string; title: string; status: "pending" | "doing" | "done" }>;
+    planInherited?: boolean;
     planTerminal?: boolean;
     question?: { question: string; options: Array<{ label: string; detail?: string }>; allowFreeform?: boolean };
     meta?: string;

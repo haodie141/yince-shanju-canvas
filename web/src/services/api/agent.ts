@@ -13,6 +13,7 @@ export type AgentMediaSettings = {
     imageParameters?: string;
     quality: string;
     durationSeconds?: number;
+    itemDurations?: { nodeId: string; durationSeconds: number }[];
     videoGenerateAudio?: boolean;
     videoWatermark?: boolean;
     videoArkPrivateAssetUpload?: boolean;

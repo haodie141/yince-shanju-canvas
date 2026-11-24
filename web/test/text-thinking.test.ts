@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LEGACY_TEXT_THINKING_CONFIG, resolveThinkingLevel, thinkingLevelsFor, thinkingPresetConfig, withThinkingLevels, type TextThinkingConfig } from "../src/lib/text-thinking";
+import { LEGACY_TEXT_THINKING_CONFIG, resolveThinkingLevel, thinkingLevelsFor, thinkingPresetConfig, thinkingRequestLabel, withThinkingLevels, type TextThinkingConfig } from "../src/lib/text-thinking";
 
 const levels: TextThinkingConfig = { mode: "levels", levels: ["off", "low", "high", "max"], default: "high", switch: { kind: "thinking-type" }, intensity: { kind: "effort" } };
 const always: TextThinkingConfig = { mode: "always", levels: ["low", "high"], switch: { kind: "none" }, intensity: { kind: "gemini-level" } };
@@ -25,6 +25,18 @@ describe("resolveThinkingLevel", () => {
         expect(thinkingLevelsFor(LEGACY_TEXT_THINKING_CONFIG)).toEqual(["off", "medium"]);
         expect(resolveThinkingLevel(LEGACY_TEXT_THINKING_CONFIG, "auto")).toBe("off");
         expect(resolveThinkingLevel(LEGACY_TEXT_THINKING_CONFIG, "high")).toBe("medium");
+    });
+
+    test("Agent displays and submits the selected model's effective thinking level", () => {
+        const deepseek: TextThinkingConfig = { ...levels, default: "low" };
+        const glm: TextThinkingConfig = { ...always, levels: ["low", "medium", "high"], default: "low" };
+        expect(resolveThinkingLevel(deepseek, "auto")).toBe("low");
+        expect(thinkingRequestLabel("auto", resolveThinkingLevel(deepseek, "auto"))).toBe("默认 · 轻度");
+        expect(resolveThinkingLevel(deepseek, "off")).toBe("off");
+        expect(thinkingRequestLabel("off", resolveThinkingLevel(deepseek, "off"))).toBe("关闭");
+        expect(resolveThinkingLevel(glm, "off")).toBe("low");
+        expect(thinkingRequestLabel("off", resolveThinkingLevel(glm, "off"))).toBe("轻度");
+        expect(thinkingRequestLabel("auto", resolveThinkingLevel(glm, "auto"))).toBe("默认 · 轻度");
     });
 
     test("removing a level prunes its mappings, budget and default without mutating the model", () => {

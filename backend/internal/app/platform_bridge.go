@@ -20,6 +20,8 @@ type (
 	PublicRuntimeLimits        = platform.PublicRuntimeLimits
 	FeatureAvailability        = platform.FeatureAvailability
 	PublicFeatureAvailability  = platform.PublicFeatureAvailability
+	DefaultModels              = platform.DefaultModels
+	PublicDefaultModels        = platform.PublicDefaultModels
 )
 
 const (
@@ -31,6 +33,7 @@ const (
 	FeaturePluginCenter          = platform.FeaturePluginCenter
 	FeatureSystemPlugins         = platform.FeatureSystemPlugins
 	FeatureInspirationSources    = platform.FeatureInspirationSources
+	FeatureInspirationHall       = platform.FeatureInspirationHall
 	FeatureTimelineTranscription = platform.FeatureTimelineTranscription
 	FeatureImageWorkbench        = platform.FeatureImageWorkbench
 	FeatureVideoWorkbench        = platform.FeatureVideoWorkbench
@@ -131,6 +134,18 @@ func (s *Service) FeatureEnabled(feature string) (bool, error) {
 
 func (s *Service) RequireFeature(feature string) error {
 	return s.platformDomain().RequireFeature(feature)
+}
+
+func (s *Service) DefaultModels() (*PublicDefaultModels, error) {
+	return s.platformDomain().DefaultModels()
+}
+
+func (s *Service) AdminDefaultModels(actor *model.User) (*PublicDefaultModels, error) {
+	return s.platformDomain().AdminDefaultModels(actor)
+}
+
+func (s *Service) UpdateDefaultModels(actor *model.User, value DefaultModels) (*PublicDefaultModels, error) {
+	return s.platformDomain().UpdateDefaultModels(actor, value)
 }
 
 func (s *Service) AcquireChannelSlot(ctx context.Context, channelID string, fallbackScope string, ttl time.Duration) (func(), int, error) {

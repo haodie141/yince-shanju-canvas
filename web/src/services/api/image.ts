@@ -311,6 +311,8 @@ export async function requestToolResponse(config: AiConfig, messages: ResponseIn
                 tools,
                 tool_choice: toChatCompletionToolChoice(toolChoice),
                 parallel_tool_calls: false,
+                ...(requestConfig.model === "deepseek-flash" && tools.some((tool) => tool.function.name === "optimize_prompt") ? { thinking: { type: "disabled" } } : {}),
+                ...(options?.maxOutputTokens ? { max_tokens: options.maxOutputTokens } : {}),
             };
             try {
                 return await requestStreamingChatCompletion(requestConfig, chatPayload, onDelta, options);
@@ -339,6 +341,7 @@ export async function requestToolResponse(config: AiConfig, messages: ResponseIn
                     tools: tools.map(toResponseTool),
                     tool_choice: toolChoice,
                     parallel_tool_calls: false,
+                    ...(options?.maxOutputTokens ? { max_output_tokens: options.maxOutputTokens } : {}),
                 },
                 options?.promptCacheKey,
             ),

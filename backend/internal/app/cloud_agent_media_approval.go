@@ -23,6 +23,10 @@ type CloudAgentMediaSettings struct {
 	ImageParameters            string `json:"imageParameters,omitempty"`
 	Quality                    string `json:"quality"`
 	DurationSeconds            *int   `json:"durationSeconds,omitempty"`
+	ItemDurations              []struct {
+		NodeID string `json:"nodeId"`
+		DurationSeconds int `json:"durationSeconds"`
+	} `json:"itemDurations,omitempty"`
 	VideoGenerateAudio         *bool  `json:"videoGenerateAudio,omitempty"`
 	VideoWatermark             *bool  `json:"videoWatermark,omitempty"`
 	VideoArkPrivateAssetUpload *bool  `json:"videoArkPrivateAssetUpload,omitempty"`
@@ -178,6 +182,16 @@ func (s *Service) updateCloudAgentMediaBatchApproval(repo *repository.Repository
 	if len(args.Items) != len(previous.Items) {
 		return creationConflict("批量生成审批条目已变化")
 	}
+	durations := map[string]int{}
+	for _, item := range settings.ItemDurations {
+		if args.Mode != "video" || item.DurationSeconds <= 0 || durations[item.NodeID] != 0 {
+			return BadAuthRequest("视频时长设置无效")
+		}
+		durations[item.NodeID] = item.DurationSeconds
+	}
+	if len(durations) > 0 && len(durations) != len(args.Items) {
+		return BadAuthRequest("视频时长设置与批量条目不一致")
+	}
 	batch := *previous
 	batch.Items = make([]cloudAgentMediaBatchItem, 0, len(previous.Items))
 	prepared := make([]cloudAgentMediaBatchPrepared, 0, len(previous.Items))
@@ -196,7 +210,13 @@ func (s *Service) updateCloudAgentMediaBatchApproval(repo *repository.Repository
 		if itemArgs.Mode != args.Mode || itemArgs.NodeID != item.NodeID {
 			return creationConflict("批量生成审批条目不一致")
 		}
-		if err := applyCloudAgentMediaApprovalSettings(&itemArgs, settings); err != nil {
+		itemSettings := settings
+		if len(durations) > 0 {
+			duration := durations[item.NodeID]
+			if duration == 0 { return BadAuthRequest("视频时长设置与批量条目不一致") }
+			itemSettings.DurationSeconds = &duration
+		}
+		if err := applyCloudAgentMediaApprovalSettings(&itemArgs, itemSettings); err != nil {
 			return err
 		}
 		itemCall, err := cloudAgentMediaBatchItemCall(call.ID, index, itemArgs)
@@ -254,9 +274,9 @@ func (s *Service) updateCloudAgentMediaBatchApproval(repo *repository.Repository
 		}
 		// An explicit duration applies to the whole batch, including items
 		// that previously had individual overrides. Omission preserves them.
-		if settings.DurationSeconds != nil {
+		if settings.DurationSeconds != nil || len(durations) > 0 {
 			args.Items[index].Duration = stored.Duration
-			args.Duration = stored.Duration
+			if len(durations) == 0 { args.Duration = stored.Duration }
 		}
 	}
 	budget := state.Request.Budget
@@ -354,6 +374,14 @@ func validateCloudAgentResolvedMediaOptions(requested, resolvedInput map[string]
 		// 解析后的像素值。反方向（像素换回比例）会丢掉像素档位，仍按不一致处理。
 		if key == "size" && (cloudAgentMediaSizeSameFrame(requestedValue, stringValue(resolvedOptions[key])) || cloudAgentMediaSizeSameFrame(requestedValue, stringValue(resolvedConfig[key]))) {
 			continue
+		}
+		// 固定规格视频用分辨率标签表达画幅，准入会移除独立 size；仅当标签与原画幅一致时视为等价。
+		if key == "size" && stringValue(resolvedInput["mode"]) == "video" && stringValue(resolvedOptions[key]) == "" && stringValue(resolvedConfig[key]) == "" {
+			requestedRatio, requestedOK := cloudAgentMediaFrameRatio(requestedValue)
+			resolvedRatio, resolvedOK := dramaResolutionLabelRatio(firstNonEmpty(stringValue(resolvedOptions["vquality"]), stringValue(resolvedConfig["vquality"])))
+			if requestedOK && resolvedOK && math.Abs(requestedRatio-resolvedRatio)/resolvedRatio <= cloudAgentMediaSizeFrameTolerance {
+				continue
+			}
 		}
 		if key == "quality" && requestedValue != "" {
 			if _, declared := resolvedOptions[key]; !declared {

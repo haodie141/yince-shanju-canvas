@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -62,6 +63,43 @@ func TestSystemProxyEventStreamFlushesBeforeUpstreamCompletes(t *testing.T) {
 	}
 	close(release)
 	_ = response.Body.Close()
+}
+
+type canceledAfterStream struct{ parts []string }
+
+func (r *canceledAfterStream) Read(p []byte) (int, error) {
+	if len(r.parts) == 0 {
+		return 0, context.Canceled
+	}
+	part := r.parts[0]
+	r.parts = r.parts[1:]
+	return copy(p, part), nil
+}
+
+func (*canceledAfterStream) Close() error { return nil }
+
+func TestSystemProxyEventStreamCompletedBeforeClientDisconnect(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		parts     []string
+		wantError bool
+	}{
+		{"complete event split across reads", []string{"data: result\n\ndata: [DO", "NE]\n\n"}, false},
+		{"complete CRLF event", []string{"data: result\r\n\r\ndata: [DONE]\r\n\r\n"}, false},
+		{"incomplete event", []string{"data: result\n\ndata: [DONE]\n"}, true},
+		{"disconnect during output", []string{"data: partial\n\n"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			upstream := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: &canceledAfterStream{parts: tc.parts}}
+			_, err := streamSystemProxyResponse(c, upstream, 1<<20)
+			if tc.wantError != errors.Is(err, context.Canceled) {
+				t.Fatalf("error = %v, want canceled = %v", err, tc.wantError)
+			}
+		})
+	}
 }
 
 func TestSystemProxyEventStreamEnforcesResponseLimit(t *testing.T) {

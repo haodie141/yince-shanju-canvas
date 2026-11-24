@@ -595,7 +595,7 @@ function SegmentPrompt({ segment, castById, writing, onSave, onWrite }: { segmen
                         </button>
                     </div>
                     <div className="drama-sdx-prefix-refs">
-                        {segment.index > 0 ? <span className="drama-sdx-prefix-ref is-frame">首帧 · 上一段最后一帧（不占编号）</span> : null}
+                        {segment.index > 0 ? <span className="drama-sdx-prefix-ref is-frame">{request.operation === "reference_to_video" ? "接续参考 · 上一段最后一帧（计入模型参考图上限）" : "首帧 · 上一段最后一帧（不占编号）"}</span> : null}
                         {request.references.map((ref, index) => {
                             const resourceId = ref.resourceId || castById.get(ref.castId)?.imageResourceId;
                             const caption = ref.sent ? `${ref.label}：${ref.name}` : `${ref.label}（${ref.name}）未附图，按文字设定生成`;

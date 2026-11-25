@@ -384,6 +384,8 @@ export function CanvasNodePromptPanel({
         if (!text || isRunning) return false;
         if (mode === "text" && node.metadata?.listMode && onListGenerate) onListGenerate(node.id, text);
         else onGenerate(node.id, mode, text);
+        // 提交后立即收起创作面板，让生成进度直接显示在节点上。
+        onClose?.();
         return true;
     };
 

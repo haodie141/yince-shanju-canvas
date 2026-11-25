@@ -1,0 +1,33 @@
+{
+  "apiVersion": "yingce.plugin/v2",
+  "id": "fada-image",
+  "name": "Fada 图片生成",
+  "version": "1.0.0",
+  "author": "影策",
+  "description": "Fada 文生图和多参考图生图接口。",
+  "permissions": ["generation.run", "media.read"],
+  "configuration": {"fields": [{"name": "apiKey", "type": "secret", "label": "API Key", "required": true}]},
+  "contributes": {"providers": [{
+    "id": "fada-image",
+    "label": "Fada 图片生成",
+    "capabilities": ["image"],
+    "scopes": ["admin.system-channel", "canvas", "creation", "agent"],
+    "baseUrl": "https://apinocf.fdai.xyz",
+    "requiresPublicMediaUrls": true,
+    "auth": {"type": "bearer", "field": "apiKey"},
+    "imageParameters": [
+      {"name": "size", "label": "画幅比例", "type": "string", "binding": "aspectRatio", "encoding": "ratio", "values": ["1:1", "16:9", "9:16", "4:3", "3:4"], "default": "1:1", "pricing": true},
+      {"name": "count", "label": "生成数量", "type": "integer", "binding": "imageCount", "min": 1, "max": 1, "step": 1, "default": 1}
+    ],
+    "create": {"method": "POST", "path": "/v1/images/generations", "contentType": "application/json", "body": {
+      "model": {"$ref": "request.model"},
+      "prompt": {"$ref": "request.prompt"},
+      "size": {"$omitEmpty": {"$ref": "request.aspectRatio"}},
+      "image": {"$omitEmpty": {"$map": {"from": {"$sortByOrder": {"$ref": "request.images"}}, "as": "media", "in": {"$ref": "media.value"}}}}
+    }},
+    "response": {"status": "succeeded", "images": {"$map": {"from": {"$ref": "response.data"}, "as": "item", "in": {
+      "url": {"$if": {"condition": {"$in": [{"$first": {"$split": [{"$ref": "item.b64_json"}, ":"]}}, ["http", "https"]]}, "then": {"$ref": "item.b64_json"}, "else": {"$ref": "item.url"}}},
+      "dataUrl": {"$if": {"condition": {"$and": [{"$ref": "item.b64_json"}, {"$not": {"$in": [{"$first": {"$split": [{"$ref": "item.b64_json"}, ":"]}}, ["http", "https"]]}}]}, "then": {"$concat": ["data:image/png;base64,", {"$ref": "item.b64_json"}]}, "else": null}}
+    }}}, "errorPaths": ["error.code"], "messagePaths": ["error.message"]}
+  }]}
+}

@@ -99,3 +99,5 @@ backend/tmp_*
 .zocde/
 # Generated locally by scripts/export-theme-skins.ts.
 /web/theme-skins-install.js
+# Internal handover notes and ops screenshots; contains private server details.
+/交接资料/

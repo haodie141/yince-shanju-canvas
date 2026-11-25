@@ -2531,6 +2531,8 @@ function CanvasViewportPage() {
                     onGenerate={(nodeId) => {
                         const target = nodesRef.current.find((item) => item.id === nodeId);
                         void handleGenerateNode(nodeId, target?.metadata?.generationMode || "image", target?.metadata?.composerContent ?? target?.metadata?.prompt ?? "");
+                        // 发送后收起组装提示词浮层，生成进度交给节点自身展示。
+                        setDialogNodeId((current) => (current === nodeId ? null : current));
                     }}
                     workspaceMode={workspaceMode}
                 />
@@ -2570,6 +2572,7 @@ function CanvasViewportPage() {
             removeScriptRow,
             retryFailedBatchItems,
             runningNodeId,
+            setDialogNodeId,
             stopRemainingBatchItems,
             theme,
             updateBatchRow,

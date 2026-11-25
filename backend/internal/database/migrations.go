@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 98
+const CurrentSchemaVersion int64 = 103
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -341,6 +341,43 @@ var schemaMigrations = []migration{
 	{version: 96, name: "canvas_unified_text_nodes", checksum: canvasNodeModelChecksum, apply: migrateCanvasNodeModel},
 	{version: 97, name: "channel_websites", checksum: "sha256:channel-websites-v97-20261110", apply: migrateChannelWebsites},
 	{version: 98, name: "api_log_generation_content", checksum: "sha256:api-log-generation-content-v98", apply: migrateAPILogGenerationContent},
+	{version: 99, name: "canvas_share_allow_copy", checksum: "sha256:canvas-share-allow-copy-v99", apply: func(tx *gorm.DB) error {
+		if !tx.Migrator().HasTable(&model.CanvasShare{}) || tx.Migrator().HasColumn(&model.CanvasShare{}, "AllowCopy") {
+			return nil
+		}
+		return tx.Migrator().AddColumn(&model.CanvasShare{}, "AllowCopy")
+	}},
+	{version: 100, name: "canvas_share_snapshots", checksum: "sha256:canvas-share-snapshots-v100", apply: migrateCanvasShareSnapshots},
+	{version: 101, name: "featured_canvas_video_source", checksum: "sha256:featured-canvas-video-source-v101-20261123", apply: func(tx *gorm.DB) error {
+		// 只补一列，记录精选视频来源；旧记录为空串，既有视频和关联快照不变。
+		if !tx.Migrator().HasTable(&model.FeaturedCanvas{}) {
+			return tx.AutoMigrate(&model.FeaturedCanvas{})
+		}
+		if tx.Migrator().HasColumn(&model.FeaturedCanvas{}, "VideoSource") {
+			return nil
+		}
+		return tx.Migrator().AddColumn(&model.FeaturedCanvas{}, "VideoSource")
+	}},
+	{version: 102, name: "featured_canvas_persistent_copy", checksum: "sha256:featured-canvas-persistent-copy-v102-20261123", apply: func(tx *gorm.DB) error {
+		// 精选持久副本与分享主动关闭标记；只补列，不删除或改写既有精选、快照和资源。
+		if err := tx.AutoMigrate(&model.CanvasShare{}, &model.FeaturedCanvas{}); err != nil {
+			return err
+		}
+		return nil
+	}},
+	{version: 103, name: "featured_canvas_cover", checksum: "sha256:featured-canvas-cover-v103-20261123", apply: func(tx *gorm.DB) error {
+		// 只为精选补充自定义封面列；旧记录封面为空，仍显示视频首帧。
+		return tx.AutoMigrate(&model.FeaturedCanvas{})
+	}},
+}
+
+func migrateCanvasShareSnapshots(tx *gorm.DB) error {
+	if tx.Migrator().HasTable(&model.CanvasShare{}) && !tx.Migrator().HasColumn(&model.CanvasShare{}, "CurrentSnapshotID") {
+		if err := tx.Migrator().AddColumn(&model.CanvasShare{}, "CurrentSnapshotID"); err != nil {
+			return err
+		}
+	}
+	return tx.AutoMigrate(&model.CanvasShareSnapshot{}, &model.CanvasShareSnapshotResource{}, &model.CanvasShareCloneReceipt{}, &model.FeaturedCanvas{})
 }
 
 func migrateAPILogGenerationContent(tx *gorm.DB) error {

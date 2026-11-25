@@ -21,6 +21,7 @@ func cloudAgentToolHandlers() map[string]cloudAgentToolHandler {
 		agenttool.CanvasReadStoryboard:   {Read: cloudAgentHandleCanvasReadStoryboard},
 		agenttool.ImageTextDetect:        {Read: cloudAgentHandleImageTextDetect},
 		agenttool.ImageAnnotationRender:  {Read: cloudAgentHandleImageAnnotationRender},
+		agenttool.CanvasExtractVideoTail: {Read: cloudAgentPrepareVideoTail, Write: applyCloudAgentVideoTailPlaceholder, Preview: cloudAgentPreviewVideoTail},
 		agenttool.SkillReadFile:          {Read: cloudAgentHandleSkillReadFile},
 		agenttool.SkillSearch:            {Read: cloudAgentHandleSkillSearch},
 		agenttool.SkillMarketSearch:      {Read: cloudAgentHandleSkillMarketSearch},

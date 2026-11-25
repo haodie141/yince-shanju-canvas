@@ -1397,7 +1397,8 @@ func (r *dramaRun) submitSegmentPrompt(job *model.DramaJob) (*model.Task, bool, 
 		}
 		seconds := production.SnapVideoSeconds(draft.view.DurationMs, profile.Durations)
 		// 并行出片不带上一段尾帧，提示词不能写“首帧承接上一段”。
-		draft.input.FirstFrame = position > 0 && !r.settings.parallelVideo()
+		draft.input.ReferenceFrame = position > 0 && r.settings.VideoContinuity == DramaContinuityReference
+		draft.input.FirstFrame = position > 0 && !r.settings.parallelVideo() && !draft.input.ReferenceFrame
 		if len(draft.input.Shots) > 0 {
 			draft.input.Shots[len(draft.input.Shots)-1].DurationMs += int64(seconds)*1000 - draft.view.DurationMs
 		}

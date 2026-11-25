@@ -169,6 +169,6 @@ func (r *Repository) ExpediteResourceOffloadJobs(provider, endpoint, bucket stri
 // LocalObjectReferenced 判断是否还有资源行使用这份本地文件，删除本地文件前必须为 false。
 func (r *Repository) LocalObjectReferenced(objectKey string) (bool, error) {
 	var count int64
-	err := r.db.Model(&model.Resource{}).Where("COALESCE(provider, '') IN ? AND object_key = ?", []string{"", "local"}, objectKey).Count(&count).Error
+	err := r.db.Model(&model.Resource{}).Where("LOWER(TRIM(COALESCE(provider, ''))) IN ? AND object_key = ?", []string{"", "local"}, objectKey).Count(&count).Error
 	return count > 0, err
 }

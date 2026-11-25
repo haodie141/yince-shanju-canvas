@@ -29,6 +29,7 @@ export { DRAMA_CAST_KIND_LABEL as CAST_KIND_LABEL, DRAMA_STATUS_LABEL as STATUS_
 
 /** 段落衔接方式的文案：新建页与设置页共用。 */
 export const VIDEO_CONTINUITY_LABEL: Record<DramaVideoContinuity, { title: string; detail: string }> = {
+    reference_frame: { title: "多图参考接续", detail: "把上一段尾帧作为参考图，与角色场景图一同提交；画面衔接由模型尽量保持" },
     tail_frame: { title: "尾帧续接", detail: "第 2 段起用上一段最后一帧做首帧，同集按顺序逐段生成，画面衔接更稳" },
     parallel: { title: "并行出片", detail: "每段只按角色与场景参考图独立生成，同集各段一起提交，适合按班次批量出片的渠道" },
 };

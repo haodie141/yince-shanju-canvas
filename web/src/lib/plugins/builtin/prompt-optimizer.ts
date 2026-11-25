@@ -76,6 +76,9 @@ const systemPrompt = [
     "根据 generationMode 选择表达：图片侧重静态画面、构图和材质，视频侧重动作连续性、时长感、镜头运动和首尾衔接。",
     "当优化模式是适配当前模型时，先结合 targetProtocol 和 targetModel 判断模型族，再严格执行模型适配策略；不要编造不存在的参数、权重语法或模型能力。",
     "最终必须调用 optimize_prompt 工具，不要输出 Markdown，不要在工具调用之外解释。",
+    "工具参数必须是完整、合法的 JSON 对象，包含工具定义中的全部字段；键名和字符串使用英文双引号，正确转义字符串内的引号、反斜杠和换行，不要使用注释或尾随逗号。",
+    '工具参数格式示例（仅供参考格式，不要照搬内容）：{"optimizedPrompt":"人物在公园中行走，镜头平稳跟随。","negativePrompt":"","changes":["明确镜头运动"],"assumptions":[],"variants":[]}',
+    "optimizedPrompt 必须非空；没有对应内容时 negativePrompt 用空字符串，changes、assumptions 和 variants 用空数组。保持结果简洁，不要重复同义版本，也不要省略用户要求保留的重要内容。",
 ].join("\n");
 
 type ModelAdaptationProfile = {
@@ -106,8 +109,18 @@ function containsAny(value: string, keywords: string[]) {
     return keywords.some((keyword) => value.includes(keyword));
 }
 
+function isH3Video(input: PromptOptimizationInput) {
+    return input.generationMode === "video" && /(?:minimax[\s_-]*h3|(?:shanju|yingzuo)-h3-)/i.test(`${input.targetModel || ""} ${input.targetProtocol || ""}`);
+}
+
 function resolveModelAdaptationProfile(input: PromptOptimizationInput): ModelAdaptationProfile {
     const model = `${input.targetModel || ""} ${input.targetProtocol || ""}`.toLowerCase();
+    if (isH3Video(input)) return {
+        id: "minimax-h3", label: "MiniMax H3 视频模型",
+        promptShape: "按原文的时间顺序组织画面、动作与镜头；需要时分别描述环境声音和音乐。",
+        rules: ["严格保留用户指定的主体、关系、时序、镜头、结局和所有素材引用编号。", "区分普通参考图和用户明确指定的首尾帧，不凭图片顺序推断帧角色。", "台词和画面文字保持原语言原文；没有原文时只描述说话动作，不编造台词。", "只依据用户提供的内容增加必要细节，保持参考素材身份对应。"],
+        avoid: ["不要擅自添加人物、道具、场景、光线、对话、结局或参考图用途。", "不要将普通参考图当作固定首帧，也不要把创作设定整体堆入镜头。"],
+    };
     if (input.generationMode === "image") {
         if (containsAny(model, ["gemini", "imagen", "nano-banana", "nanobanana"])) {
             return {
@@ -233,6 +246,10 @@ function buildUserMessage(input: PromptOptimizationInput, modelProfile: ModelAda
         "用户原始提示词：",
         input.prompt.trim() || "（用户还没有写出具体提示词，请从参考上下文中提炼一个可执行版本）",
     ];
+    if (input.instruction?.trim()) textParts.push("", "用户补充的润色要求：", input.instruction.trim());
+    if (input.generationMode === "video" && input.videoSettings) {
+        textParts.push(`目标时长：${input.videoSettings.seconds || "未指定"} 秒`, `画面规格：${[input.videoSettings.size, input.videoSettings.resolution].filter(Boolean).join(" / ") || "未指定"}`);
+    }
     if (modelProfile) {
         textParts.push(
             "",
@@ -328,9 +345,10 @@ function createPromptOptimizer(context: Parameters<NonNullable<RegisteredPlugin[
 
     return {
         optimize: async (input, options) => {
-            const modelProfile = input.mode === "model-adapt" ? resolveModelAdaptationProfile(input) : null;
+            const modelProfile = input.mode === "model-adapt" || isH3Video(input) ? resolveModelAdaptationProfile(input) : null;
             const response = await textService.requestToolResponse({
                 model: input.optimizerModel,
+                maxOutputTokens: 64000,
                 messages: [{ role: "system", content: systemPrompt }, buildUserMessage(input, modelProfile)],
                 tools: [optimizerTool],
                 toolChoice: { type: "function", name: "optimize_prompt" },
@@ -339,6 +357,11 @@ function createPromptOptimizer(context: Parameters<NonNullable<RegisteredPlugin[
             });
             const toolCall = response.toolCalls.find((call) => call.name === "optimize_prompt");
             const parsed = parseJsonObject(toolCall?.arguments || response.content);
+            if (!parsed || typeof parsed.optimizedPrompt !== "string" || !parsed.optimizedPrompt.trim()) throw new Error("提示词优化未返回有效结果，请重试");
+            if (isH3Video(input)) {
+                const mentions = input.prompt.match(/@(?:图片|角色|音频|视频)\d+/g) || [];
+                if (mentions.some((mention) => !(parsed.optimizedPrompt as string).includes(mention))) throw new Error("优化结果丢失了原有素材引用，请重试");
+            }
             return normalizeResult(parsed, input.prompt, modelProfile);
         },
     };

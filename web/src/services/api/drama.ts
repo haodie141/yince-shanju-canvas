@@ -125,7 +125,7 @@ export type DramaSettings = {
  * 剧情段视频衔接方式：tail_frame 第 2 段起用上一段最后一帧做首帧，同集各段按顺序生成；
  * parallel 每段只按角色/场景参考图独立生成，同集各段同时提交，适合按班次批量出片的渠道。
  */
-export type DramaVideoContinuity = "tail_frame" | "parallel";
+export type DramaVideoContinuity = "tail_frame" | "reference_frame" | "parallel";
 
 export type DramaStatus = "draft" | "running" | "paused" | "completed";
 
@@ -464,6 +464,7 @@ export type DramaModelOption = {
     maxAudios?: number;
     /** 仅视频模型：支持图生视频，可用于尾帧续接；为 false 时只能并行出片。 */
     tailFrameChain?: boolean;
+    referenceFrameChain?: boolean;
     /** 仅视频模型：能准确给出的作品画幅；不含作品画幅的模型不能用于该作品。 */
     videoRatios?: string[];
     /** 仅视频模型：是否同步生成对白与音效；false 时剧情段视频没有声音。 */

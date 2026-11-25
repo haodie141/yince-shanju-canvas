@@ -143,3 +143,9 @@ export function resolveThinkingLevel(config: TextThinkingConfig | undefined, req
 export function isThinkingLevel(value: unknown): value is ThinkingLevel {
     return typeof value === "string" && rank(value) >= 0;
 }
+
+export function thinkingRequestLabel(requested: ThinkingRequest | "", resolved: ThinkingLevel | ""): string {
+    if (!requested || requested === "auto") return resolved ? `默认 · ${THINKING_LEVEL_LABELS[resolved]}` : "默认";
+    if (resolved) return THINKING_LEVEL_LABELS[resolved];
+    return requested === "deep" ? "深入" : THINKING_LEVEL_LABELS[requested];
+}

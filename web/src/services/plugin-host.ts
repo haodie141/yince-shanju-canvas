@@ -16,12 +16,13 @@ export function createPluginHostContext(plugin: RegisteredPlugin, installation: 
                     requestToolResponse: async (request: PluginTextRequest) => {
                         if (!permissions.has("ai.text")) throw new Error("插件没有调用文本模型的权限");
                         const response = await requestToolResponse(
-                            { ...aiConfig, model: request.model?.trim() || aiConfig.textModel },
+                            // 插件未指定模型时优先使用专用于润色的默认模型，再回退到默认文本模型。
+                            { ...aiConfig, model: request.model?.trim() || aiConfig.optimizerModel?.trim() || aiConfig.textModel },
                             request.messages as ResponseInputMessage[],
                             (request.tools || []) as ResponseFunctionTool[],
                             (request.toolChoice || "auto") as ToolChoice,
                             request.onDelta,
-                            { signal: request.signal },
+                            { signal: request.signal, maxOutputTokens: request.maxOutputTokens },
                         );
                         return {
                             content: response.content,

@@ -397,15 +397,23 @@ type CanvasProject struct {
 }
 
 type CanvasShare struct {
-	ID          string     `json:"id" gorm:"primaryKey;size:36"`
-	UserID      string     `json:"userId" gorm:"index;size:36;uniqueIndex:idx_canvas_share_owner_project,priority:1"`
-	ProjectID   string     `json:"projectId" gorm:"index;size:80;uniqueIndex:idx_canvas_share_owner_project,priority:2"`
-	TokenHash   string     `json:"-" gorm:"uniqueIndex;size:64"`
-	TokenCipher string     `json:"-" gorm:"type:text"`
-	Enabled     bool       `json:"enabled" gorm:"index"`
-	ExpiresAt   *time.Time `json:"expiresAt" gorm:"index"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID                string  `json:"id" gorm:"primaryKey;size:36"`
+	UserID            string  `json:"userId" gorm:"index;size:36;uniqueIndex:idx_canvas_share_owner_project,priority:1"`
+	ProjectID         string  `json:"projectId" gorm:"index;size:80;uniqueIndex:idx_canvas_share_owner_project,priority:2"`
+	TokenHash         string  `json:"-" gorm:"uniqueIndex;size:64"`
+	TokenCipher       string  `json:"-" gorm:"type:text"`
+	Enabled           bool    `json:"enabled" gorm:"index"`
+	AllowCopy         bool    `json:"allowCopy" gorm:"not null;default:false"`
+	CurrentSnapshotID *string `json:"-" gorm:"size:36;index"`
+	// RevokedAt 记录分享者主动关闭分享的时间。关闭只停用分享并保留记录，
+	// 以便与“原画布被删除”区分：前者撤回授权，后者不应让平台精选副本失效。
+	RevokedAt *time.Time `json:"revokedAt,omitempty" gorm:"index"`
+	// CanvasDeletedAt 记录原画布删除时间；该分享作为墓碑保留，避免删除后
+	// 丢失“作者是否已主动撤回”的判定。若 RevokedAt 已存在，撤回仍然有效。
+	CanvasDeletedAt *time.Time `json:"-" gorm:"index"`
+	ExpiresAt       *time.Time `json:"expiresAt" gorm:"index"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
 }
 
 type PromptTemplate struct {

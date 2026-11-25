@@ -600,7 +600,10 @@ export const koKR: DeepStringRecord<typeof zhCN> = {
         models: {
             image: { title: "기본 이미지 생성 모델", description: "이미지 생성, 이미지 편집, 시각 탐색", empty: "현재 채널에 사용 가능한 이미지 모델이 없습니다" },
             video: { title: "기본 동영상 모델", description: "텍스트-동영상, 이미지-동영상, 컷 확장", empty: "현재 채널에 사용 가능한 동영상 모델이 없습니다" },
-            text: { title: "기본 텍스트 모델", description: "프롬프트 다듬기, 대본, 구조화 텍스트", empty: "현재 채널에 사용 가능한 텍스트 모델이 없습니다" },
+            text: { title: "기본 Agent 텍스트 모델", description: "Agent 대화, 대본, 구조화 텍스트", empty: "현재 채널에 사용 가능한 텍스트 모델이 없습니다" },
+            optimizer: { title: "기본 교정 모델", description: "프롬프트 교정과 최적화 도구 전용 모델이며 에이전트 전환에 영향을 받지 않습니다", empty: "현재 채널에 사용 가능한 교정 모델이 없습니다" },
+            optimizerFollow: "기본 텍스트 모델 따르기",
+            optimizerFollowHint: "설정하지 않으면 위의 기본 텍스트 모델을 사용합니다",
             audio: { title: "기본 오디오 모델", description: "음성, 효과음, 음악 생성", empty: "현재 채널에 사용 가능한 오디오 모델이 없습니다" },
             available: "{{count}}개 사용 가능",
             uncategorized: "미분류",

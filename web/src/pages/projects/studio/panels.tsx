@@ -1042,6 +1042,7 @@ export function SettingsPanel({ projectId, summary, cast, onChanged }: { project
                                     options={(Object.keys(VIDEO_CONTINUITY_LABEL) as DramaVideoContinuity[]).map((mode) => ({ value: mode, ...VIDEO_CONTINUITY_LABEL[mode] }))}
                                     onChange={(videoContinuity) => setSettings({ ...settings, videoContinuity })}
                                 />
+                                {continuity === "reference_frame" && videoOption && !videoOption.referenceFrameChain ? <p className="drama-cfg-note">当前视频模型不支持多图参考接续，请改用其他衔接方式或换模型。</p> : null}
                                 {continuity === "tail_frame" && videoOption && !videoOption.tailFrameChain ? <p className="drama-cfg-note">当前视频模型不支持图生视频，无法尾帧续接，请改用并行出片或换模型。</p> : null}
                                 {continuity !== (current.videoContinuity || "tail_frame") ? <p className="drama-cfg-note">已写好的段视频提示词按原方式撰写，切换后可在剧情段里重新撰写；已提交的视频会做完。</p> : null}
                             </section>
@@ -1056,9 +1057,9 @@ export function SettingsPanel({ projectId, summary, cast, onChanged }: { project
                                 </div>
                             </section>
                             <section className="drama-cfg-card">
-                                <SettingsTitle title="每段最多参考图" detail="自动取参考图时的上限，人物优先；0 为按视频模型上限" />
+                                <SettingsTitle title="每段最多参考图" detail="自动取参考图时的上限，人物优先；0 为按模型上限自动分配" />
                                 <InputNumber className="!w-full" min={0} max={20} precision={0} value={settings.referenceLimit || 0} onChange={(value) => setSettings({ ...settings, referenceLimit: value || 0 })} suffix="张" aria-label="每段最多参考图" />
-                                <p className="drama-cfg-note">超出的设定按文字描述生成，不附图。个别段需要更多参考图时，在剧情段弹窗里手动指定，只受模型上限约束。</p>
+                                <p className="drama-cfg-note">接续时上一段尾帧占用一个模型图片名额；超出的设定按文字描述生成。可在剧情段弹窗中调整参考图顺序和选择。</p>
                             </section>
                             <section className="drama-cfg-card">
                                 <SettingsTitle title="预算上限" detail="0 表示不限，含精修画布花费；达到后暂停，画布上也不能再生成" />

@@ -644,7 +644,7 @@ export function CreationComposer(props: ComposerProps) {
                 targetModel={modelOptionName(props.model) || props.model}
                 targetProtocol={priceChannel.modelCosts?.find((item) => item.model === modelOptionName(props.model))?.protocol || priceChannel.interfaceType}
                 config={props.config}
-                optimizerModel={props.config.textModel}
+                optimizerModel={props.config.optimizerModel || props.config.textModel}
                 references={optimizerReferences}
                 provider={props.promptOptimizerProvider}
                 onClose={() => setPromptOptimizerOpen(false)}

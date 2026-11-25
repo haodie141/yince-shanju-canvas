@@ -9,6 +9,7 @@ import {
     Bot,
     ChevronDown,
     CloudUpload,
+    Clapperboard,
     Coins,
     CreditCard,
     Crown,
@@ -120,6 +121,7 @@ const adminNavigation: AdminNavigationGroup[] = [
         key: "creation",
         label: "创作与扩展",
         items: [
+            { path: "/admin/featured", keywords: "精选 视频 首页 画布 模板", label: "创作精选", shortLabel: "精选", icon: <Clapperboard className="size-4" /> },
             { path: "/admin/workbench-tools", keywords: "工作台 工具 首页", label: "工作台工具", shortLabel: "工具", icon: <Shapes className="size-4" /> },
             { path: "/admin/prompt-templates", keywords: "提示词 模板 分镜 prompt", label: "提示词模板", shortLabel: "模板", icon: <MessageSquareText className="size-4" /> },
             { path: "/admin/pose-library", keywords: "姿势 动作 pose", label: "姿势库", shortLabel: "姿势", icon: <PersonStanding className="size-4" /> },
@@ -144,6 +146,7 @@ const adminNavigation: AdminNavigationGroup[] = [
         items: [
             { path: "/admin/settings/appearance", keywords: "站点 外观 品牌 主题 Logo 皮肤", label: "站点及外观", shortLabel: "外观", icon: <Palette className="size-4" /> },
             { path: "/admin/settings/features", keywords: "功能 开关 开放", label: "功能开放", shortLabel: "功能", icon: <ToggleLeft className="size-4" /> },
+            { path: "/admin/settings/default-models", keywords: "默认 模型 生图 视频 文本 音频 新用户", label: "默认模型", shortLabel: "模型", icon: <Layers3 className="size-4" /> },
             { path: "/admin/settings/access", keywords: "登录 注册 验证码 认证", label: "登录与注册", shortLabel: "注册", icon: <ShieldCheck className="size-4" /> },
             { path: "/admin/settings/email", keywords: "邮件 SMTP 发信 邮箱", label: "邮件服务", shortLabel: "邮件", icon: <Mail className="size-4" /> },
             { path: "/admin/settings/storage", keywords: "存储 OSS S3 对象存储 上传", label: "存储服务", shortLabel: "存储", icon: <HardDrive className="size-4" /> },
@@ -151,6 +154,7 @@ const adminNavigation: AdminNavigationGroup[] = [
             { path: "/admin/settings/ark-private-assets", keywords: "方舟 素材库 火山", label: "方舟素材库", shortLabel: "方舟", icon: <CloudUpload className="size-4" /> },
             { path: "/admin/settings/third-party", keywords: "第三方 参数 配置 密钥 LibTV", label: "第三方参数配置", shortLabel: "三方", icon: <KeyRound className="size-4" /> },
             { path: "/admin/settings/response-interception", keywords: "模型 响应 拦截 敏感词 过滤", label: "模型响应拦截", shortLabel: "拦截", icon: <ShieldAlert className="size-4" /> },
+            { path: "/admin/settings/prompt-moderation", keywords: "提示词 内容审核 生图 视频 安全", label: "生成内容审核", shortLabel: "审核", icon: <ShieldCheck className="size-4" /> },
             { path: "/admin/settings/system-update", keywords: "系统 更新 升级 版本 部署", label: "系统更新", shortLabel: "更新", icon: <RefreshCw className="size-4" /> },
         ],
     },

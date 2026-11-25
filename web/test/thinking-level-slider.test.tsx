@@ -25,6 +25,14 @@ test("model default remains distinct from its effective level", () => {
     expect(html).not.toContain("<button");
 });
 
+test("Agent default and unsupported off show the model's effective level", () => {
+    const automatic = renderToStaticMarkup(<ThinkingLevelSlider levels={levels} value="auto" resolvedLevel="low" showResolvedDefault onChange={noop} />);
+    expect(automatic).toContain('aria-valuetext="默认 · 轻度"');
+    const alwaysOn = renderToStaticMarkup(<ThinkingLevelSlider levels={["low", "medium", "high"]} value="off" resolvedLevel="low" showResolvedDefault onChange={noop} />);
+    expect(alwaysOn).toContain('aria-valuetext="轻度"');
+    expect(alwaysOn).toContain('value="1"');
+});
+
 test("off, unavailable and disabled states remain explicit", () => {
     expect(renderToStaticMarkup(<ThinkingLevelSlider levels={levels} value="off" onChange={noop} />)).toContain('data-tone="off"');
     expect(renderToStaticMarkup(<ThinkingLevelSlider levels={levels} value="max" disabled onChange={noop} />)).toContain("disabled");

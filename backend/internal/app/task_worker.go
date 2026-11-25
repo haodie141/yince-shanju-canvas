@@ -244,6 +244,27 @@ func (w *taskWorkerCoordinator) processClaimedTask(task *model.Task, globalSlot 
 		}
 		return terminal.markPreparationFailure(task, "渠道不可用", errors.Join(err, readErr), uncertain, "自定义渠道已关闭，上游请求未发出")
 	}
+	if task.ProviderRequestID == "" && task.PollStage != "accepted" && task.PollStage != "poll" {
+		attempts, readErr := s.repo.RouteAttempts(task.ID, task.RouteRun)
+		if readErr != nil {
+			return readErr
+		}
+		submitted := false
+		for _, attempt := range attempts {
+			if attempt.DispatchState == "accepted" || attempt.DispatchState == "submission_unknown" {
+				submitted = true
+			}
+		}
+		if !submitted {
+			if reviewErr := s.moderateTaskAdmission(task.UserID, task.ProjectID, task.Type, task.Prompt, admissionInput); reviewErr != nil {
+				uncertain := s.taskBilling().BillingFailureRequiresReview(task.BillingOrderID, task.ID, reviewErr)
+				if len(attempts) == 0 && task.RouteRun <= 1 && task.Attempts > 1 {
+					uncertain = true
+				}
+				return terminal.markPreparationFailure(task, "内容审核未通过", reviewErr, uncertain, "内容审核失败，上游请求未发出")
+			}
+		}
+	}
 
 	s.markAgentMemoryCompactRunning(*task)
 	// 回查已提交的上游任务：领取时保留了上一轮的上游阶段与进度，这里不重置为“作品创作中”。

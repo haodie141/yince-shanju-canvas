@@ -1,4 +1,6 @@
 import { createClientUUID } from "@/lib/client-id";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
+import { LEGACY_TEXT_THINKING_CONFIG, resolveThinkingLevel } from "@/lib/text-thinking";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent as ReactDragEvent } from "react";
 import { App, Button } from "antd";
 import { appQueryClient } from "@/lib/query-client";
@@ -24,6 +26,7 @@ import { saveAs } from "file-saver";
 import { buildAgentDebugExport } from "@/lib/canvas/agent-debug-export";
 import { agentPlanVisible, latestAgentPlanItems, latestAgentPlanTerminal, pendingAgentQuestion } from "@/lib/canvas/cloud-agent-plan";
 import { latestAgentMediaBatch } from "@/lib/canvas/cloud-agent-media-batch";
+import { currentAgentTurnMessages } from "@/lib/canvas/cloud-agent-turn";
 import { AgentMediaBatchBar } from "./canvas-cloud-agent-media-batch-bar";
 import { emptyAgentContextUsage, presentAgentContextUsage, reduceAgentContextUsage, type AgentContextUsage } from "@/lib/canvas/agent-context-usage";
 import { nanoid } from "nanoid";
@@ -213,7 +216,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
     const outboxDispatchRef = useRef(false);
     const outboxRunEndRef = useRef("");
     const [escapeArmedAt, setEscapeArmedAt] = useState(0);
-    const [reasoningMode, setReasoningMode] = useState<AgentReasoningMode>("off");
+    const [reasoningMode, setReasoningMode] = useState<AgentReasoningMode>("auto");
     const [profileView, setProfileView] = useState<AgentProfileView | null>(null);
     const [profileLoading, setProfileLoading] = useState(false);
     const [profileSaving, setProfileSaving] = useState(false);
@@ -286,10 +289,11 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
         conversationAutosaveRef.current = null;
     };
     const [planMinimized, setPlanMinimized] = useState(false);
-    const planItems = useMemo(() => latestAgentPlanItems(messages), [messages]);
-    const planTerminal = useMemo(() => latestAgentPlanTerminal(messages), [messages]);
+    const turnMessages = useMemo(() => currentAgentTurnMessages(messages, run), [messages, run]);
+    const planItems = useMemo(() => latestAgentPlanItems(turnMessages, run?.id), [turnMessages, run?.id]);
+    const planTerminal = useMemo(() => latestAgentPlanTerminal(turnMessages, run?.id), [turnMessages, run?.id]);
     const planVisible = agentPlanVisible(planItems);
-    const mediaBatch = useMemo(() => latestAgentMediaBatch(messages), [messages]);
+    const mediaBatch = useMemo(() => latestAgentMediaBatch(turnMessages, run?.id), [turnMessages, run?.id]);
     const pendingQuestion = useMemo(() => pendingAgentQuestion(messages), [messages]);
     const [scenePresets, setScenePresets] = useState<SkillPreset[]>([]);
     const [presetApplyingId, setPresetApplyingId] = useState("");
@@ -1457,7 +1461,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
                 const input = {
                     canvasId,
                     prompt: value,
-                    reasoningMode: settings.reasoningMode,
+                    reasoningMode: resolveThinkingLevel(modelCapabilityConfigFor(agentConfig, effectiveModel).text?.thinking || LEGACY_TEXT_THINKING_CONFIG, settings.reasoningMode) || settings.reasoningMode,
                     profileRevision: profileView.revision,
                     model: modelOptionName(effectiveModel) || undefined,
                     ...(logicalModelId ? { logicalModelId } : requestConfig.channelId ? { channelId: requestConfig.channelId, channelModelKey: modelOptionName(effectiveModel) || undefined } : {}),

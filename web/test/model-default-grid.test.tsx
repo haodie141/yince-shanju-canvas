@@ -14,14 +14,17 @@ function fixture(channels: ModelChannel[], defaults: Partial<AiConfig> = {}): Ai
 }
 
 function cards(config: AiConfig) {
-    return renderToStaticMarkup(<ModelDefaultGrid config={config} onChange={() => {}} />).match(/<button\b[^>]*role="radio"[^>]*>[\s\S]*?<\/button>/g) || [];
+    // 「跟随默认文本模型」不是模型卡片，不参与模型卡数量与顺序断言。
+    const buttons = renderToStaticMarkup(<ModelDefaultGrid config={config} onChange={() => {}} />).match(/<button\b[^>]*role="radio"[^>]*>[\s\S]*?<\/button>/g) || [];
+    return buttons.filter((button) => !button.includes("data-model-follow"));
 }
 
 test("default cards show picker second-level model names alongside their product groups", () => {
     const modelCosts = [cost("text-sku", "text", "GPT", "GPT-4o"), cost("image-sku", "image", "大香蕉", "大香蕉 Pro"), cost("video-sku", "video", "Seedance", "Seedance 2.0 Fast"), cost("audio-sku", "audio", "语音", "语音 HD")];
     const config = fixture([createModelChannel({ id: "platform", scope: "system", models: modelCosts.map((item) => item.model), modelCosts })], { textModel: "platform::text-sku" });
     const options = cards(config);
-    expect(options).toHaveLength(4);
+    // 文本模型同时出现在「默认文本模型」和「默认润色模型」两栏。
+    expect(options).toHaveLength(5);
     for (const item of modelCosts) {
         const card = options.find((option) => option.includes(`title="${item.channelLabel}"`))!;
         expect(card).toContain(`>${item.channelLabel}</span>`);
@@ -47,8 +50,9 @@ test("system variants in the same product retain distinct second-level labels an
 test("personal channels preserve configured model names and distinguish matching names by channel", () => {
     const channels = ["个人渠道 A", "个人渠道 B"].map((name, index) => createModelChannel({ id: `personal-${index}`, name, scope: "user", models: ["text-sku"], modelCosts: [cost("text-sku", "text", "GPT-4o", "渠道备注")] }));
     const options = cards(fixture(channels, { textModel: "personal-1::text-sku" }));
-    expect(options).toHaveLength(2);
-    for (const [index, option] of options.entries()) {
+    // 两栏文本模型各两张：先默认文本模型，再默认润色模型。
+    expect(options).toHaveLength(4);
+    for (const [index, option] of options.slice(0, 2).entries()) {
         expect(option).toContain('title="GPT-4o"');
         expect(option).toContain(channels[index].name);
         expect(option).not.toContain("渠道备注");

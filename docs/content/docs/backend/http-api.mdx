@@ -5,6 +5,39 @@ description: 信封、错误码与 OpenAPI
 
 # HTTP API 合同
 
+## 画布分享副本
+
+创建画布分享可传 `allowCopy`；画布所有者可通过 `PATCH /api/canvas-projects/:id/share/copy-permission` 更新该设置而不改变分享有效期。关闭分享只停用分享并保留墓碑记录，用于区分“作者主动撤回”和“原画布被删除”。公开分享响应包含 `allowCopy` 和不可完整复制项 `copyIssues`。客户端检查权限与源画布，复制公开素材到当前用户资源后保存独立画布。已公开的素材本身仍可被访问，开关控制产品内的副本入口，不是防下载或数字版权保护。
+
+## 生成内容审核记录
+
+审核日志复用调用记录（`source=prompt_moderation`），记录结论、初审/复审明细与用户提示词。列表只返回提示词摘要（`promptPreview`，去换行后最多 120 字）和字数 `promptLength`；完整提示词只在管理员读取单条详情时返回，正文最多保留 20000 字，避免异常超长输入撑大调用记录。
+
+| 接口 | 入参与结果 |
+| --- | --- |
+| `GET /api/admin/settings/prompt-moderation/logs` | `page`、`pageSize`（1–100，默认 30）；返回 `logs[]`、`total`。每条包含 `promptPreview`、`promptLength`、`errorCode`、`error` 和初审/复审明细 `responseBody` |
+| `GET /api/admin/settings/prompt-moderation/logs/:id` | 返回单条 `log`，额外包含完整 `prompt`、`promptLength` 和 `responseBody`；管理员可查看任意用户的记录，非管理员 403，记录不存在或不是审核记录时 404 |
+
+## 创作精选
+
+精选固定绑定一个画布分享快照，不跟随原画布后续修改。公开列表只返回分享仍有效、允许保存副本且视频就绪的条目；管理员列表会返回不可用条目及原因，便于修复。开启持久副本后，公开读取、视频和克隆优先使用平台副本令牌；作者误删原画布时副本继续可用，作者主动关闭分享、分享过期或禁止复制时立即下架。
+
+| 接口 | 入参与结果 |
+| --- | --- |
+| `GET /api/public/featured` | 匿名可读，按 IP 每分钟 120 次。返回 `data.items[]`，包含 `videoUrl`、`coverUrl`、`canvasUrl`、标题、分类、排序和 `persistCopy/copyStatus/sourceShareStatus`；`coverAvailable` 表示是否设置了可用的自定义封面 |
+| `GET /api/public/featured/:id/video` | 仅当精选当前可展示时返回视频流，支持 Range；分享撤回、过期、禁止复制或删除后 404 |
+| `GET /api/public/featured/:id/cover` | 精选设置了可用封面时返回封面图片；未设置封面或精选不可展示时 404，客户端改用视频首帧 |
+| `GET /api/admin/featured` | 管理员读取全量精选，额外返回 `status`、`statusMessage`、`snapshotAt`、`updatedAt`、`videoSource`、`videoAvailable`、`coverResourceId`、`coverSource`、`coverError`、`coverAvailable`、`shareEnabled`、`allowCopy`、`persistCopy`、`copyStatus`、`copySavedAt`、`copyError`、`sourceShareStatus`、`consentAt` |
+| `GET /api/admin/featured/:id/video` | 管理员预览视频，允许预览已隐藏或来源分享已失效的条目 |
+| `GET /api/admin/featured/:id/cover` | 管理员预览精选封面，允许查看已隐藏条目的封面 |
+| `POST /api/admin/featured/share-preview` | `{shareToken, snapshotId?}`；返回分享标题、所选快照时间、当前快照时间、`allowCopy`、`videos[]`、`images[]`。`status` 为 `ok`、`invalid`、`share_disabled`、`expired`、`copy_forbidden` 或 `snapshot_missing`；只返回绑定快照内、属于分享者且存储身份一致的视频和图片，不抓取任意 URL |
+| `POST /api/admin/featured`、`PUT /api/admin/featured/:id` | `{title,description,category,enabled,shareToken,snapshotId?,videoResourceId,videoSource,coverResourceId?,coverSource?,persistCopy?,consentConfirmed?}`。`videoSource=upload` 要求视频属于当前管理员；`videoSource=share` 要求视频属于分享者并已 pin 在所选快照中。`coverResourceId` 为空表示使用视频首帧；`coverSource=upload` 要求封面属于当前管理员，`coverSource=share` 要求封面图片属于分享者并已 pin 在所选快照中。开启 `persistCopy` 必须提交作者同意；服务端校验快照 pin、资源归属、平台存储和可复制节点后才写 `ready`，失败不会产生半成品副本。来源分享已删除或撤回且副本已就绪时，可用空 `shareToken` 仅修改标题、分类、简介和展示开关 |
+| `POST /api/admin/featured/reorder` | `{items:[{id,updatedAt}]}`，按提交顺序重写全局排序；时间戳过期时返回 HTTP 409，不覆盖其他管理员的修改 |
+| `PATCH /api/admin/featured/:id/enabled` | `{enabled}`；快捷开关首页展示 |
+| `DELETE /api/admin/featured/:id` | 只移除精选记录；来源分享已撤回/停用或原画布删除且快照无其他引用时，同时释放副本快照和 pin |
+
+持久副本令牌与普通分享令牌共用 `/api/public/canvas-shares/:token`、`/api/public/canvas-shares/:token/snapshots/:snapshotId/resources/:resourceId/file` 和克隆接口。克隆只创建接收者资源别名，不下载或复制整套视频；分享快照 pin、精选视频资源和精选封面都参加资源删除保护。管理员移除精选时，若来源分享仍是活动分享或快照仍被其他精选引用，不删除快照。
+
 ## 网站、Key 分组与模型批量配置
 
 以下接口沿用登录 Cookie、Origin 检查及 `{ code, data, msg, reason }` 信封，服务层要求管理员权限。网站公共连接与各 Key 的凭据分开维护；网站响应不包含 Key。
@@ -589,6 +622,10 @@ operations 的结构化配额在提交事务内实时统计账号的素材/画�
 `GET /public/welcome` 无需登录，信封 `data` 仅包含布尔值 `welcomeEnabled`，响应禁用缓存。读取失败按标准错误信封返回。
 
 管理员通过 `GET/PATCH /admin/settings/features` 读取和保存 `welcomeEnabled`，默认 `true`，与其他功能开关一起存入 `system_settings` 的 `feature_availability` JSON，并记录管理员审计。关闭后新访问 `/welcome` 的浏览器跳转到 `/`。
+
+`GET /api/public/features` 无需登录，信封 `data.features` 只包含 `inspirationHallEnabled` 和 `inspirationSourcesVisible`，供未登录首页遵守页面可见性开关；响应禁用缓存。登录用户的完整开关仍由 `GET /features` 下发，两者默认都为 `true`。
+
+全站默认模型由后台「系统设置 · 默认模型」维护：`GET/PATCH /api/admin/settings/default-models` 读写管理员配置（PATCH 整体替换，留空表示不指定），`GET /api/settings/default-models` 供登录用户读取。字段为 `imageModel`、`videoModel`、`agentTextModel`、`optimizerModel`、`audioModel`，值为系统渠道模型编码 `channelId::modelKey`；保存时校验渠道与模型仍启用且能力匹配。新用户首次登录且本地没有配置时按该值生成初始选择，已有用户和用户手动修改不会被覆盖。
 
 ## 云端 Agent
 

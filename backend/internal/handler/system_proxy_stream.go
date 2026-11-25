@@ -6,12 +6,14 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 var errSystemProxyResponseTooLarge = errors.New("系统渠道流式响应超过配置上限")
+var systemProxyDoneEvent = regexp.MustCompile(`(?m)^data: ?\[DONE\]\r?\n\r?\n`)
 
 func isSystemProxyEventStream(resp *http.Response) bool {
 	mediaType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
@@ -53,12 +55,22 @@ func streamSystemProxyResponse(c *gin.Context, resp *http.Response, responseLimi
 				return captured.Bytes(), errSystemProxyResponseTooLarge
 			}
 			chunk := buffer[:read]
+			previous := captured.Len()
 			_, _ = captured.Write(chunk)
 			if _, writeErr := c.Writer.Write(chunk); writeErr != nil {
 				return captured.Bytes(), writeErr
 			}
 			c.Writer.Flush()
 			remaining -= int64(read)
+			// [DONE] 是流式协议的结束事件；客户端收到后可以立即关闭连接。
+			// 继续等待上游 EOF 会将这个正常关闭误记为 context canceled。
+			start := max(previous-32, 0)
+			if start > 0 {
+				start-- // 保留前一个换行，避免从行中间匹配。
+			}
+			if systemProxyDoneEvent.Match(captured.Bytes()[start:]) {
+				return captured.Bytes(), nil
+			}
 		}
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {

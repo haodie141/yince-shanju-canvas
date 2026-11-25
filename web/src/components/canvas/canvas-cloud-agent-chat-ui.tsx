@@ -92,6 +92,8 @@ export type CloudAgentChatMessage = {
      */
     final?: boolean;
     planItems?: CloudAgentPlanItem[];
+    /** 继承的计划留在历史上下文，待本轮明确更新后才作为本轮待办展示。 */
+    planInherited?: boolean;
     /** 运行已进入终态，但计划项仍未全部完成；用于历史恢复时停止显示 loading。 */
     planTerminal?: boolean;
     /** 批量生成进度（media_batch_progress 合并结果），由输入区上方的批次进度条渲染。 */

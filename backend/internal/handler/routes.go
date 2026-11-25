@@ -68,6 +68,11 @@ func RegisterTaskRoutes(r *gin.RouterGroup, svc *service.Service) {
 		req.RequestID = RequestID(c)
 		task, err := svc.CreateTask(user.ID, req)
 		if err != nil {
+			var appErr *service.AppError
+			if errors.As(err, &appErr) && appErr.Status == http.StatusServiceUnavailable {
+				failService(c, err)
+				return
+			}
 			fail(c, http.StatusBadRequest, err)
 			return
 		}

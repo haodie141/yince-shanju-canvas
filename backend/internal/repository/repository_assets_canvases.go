@@ -200,7 +200,9 @@ func (r *Repository) DeleteCanvasProject(userID string, id string) error {
 		if err := deleteCanvasSnapshots(tx, snapshotIDs); err != nil {
 			return err
 		}
-		if err := tx.Where("user_id = ? AND project_id = ?", userID, id).Delete(&model.CanvasShare{}).Error; err != nil {
+		// 画布删除保留分享墓碑，供精选持久副本判断“误删”还是“主动撤回”。
+		if err := tx.Model(&model.CanvasShare{}).Where("user_id = ? AND project_id = ?", userID, id).
+			Updates(map[string]any{"enabled": false, "canvas_deleted_at": time.Now(), "current_snapshot_id": nil, "updated_at": time.Now()}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("canvas_id = ?", id).Delete(&model.CanvasUnitLink{}).Error; err != nil {

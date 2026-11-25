@@ -367,11 +367,8 @@ func (s *Service) storeResourceWithWriter(userID string, kind string, fileName s
 	resource.Status = model.ResourceStatusReady
 	resource.ETag = etag
 	if err := s.saveResourceWithinStorageLimit(&resource, reservationID); err != nil {
-		cleanupErr := s.deleteStoredResourceObject(userID, &resource)
+		cleanupErr := s.deleteFreshResource(&resource)
 		if cleanupErr == nil {
-			if deleteErr := s.repo.DeleteResource(userID, resource.ID); deleteErr != nil {
-				return nil, true, errors.Join(err, fmt.Errorf("清理资源记录失败：%w", deleteErr))
-			}
 			return nil, true, fmt.Errorf("保存资源就绪状态失败：%w", err)
 		}
 

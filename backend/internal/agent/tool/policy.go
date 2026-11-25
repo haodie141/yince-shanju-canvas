@@ -117,6 +117,7 @@ const (
 	CanvasReadStoryboard   = "canvas_read_storyboard"
 	ImageTextDetect        = "image_text_detect"
 	ImageAnnotationRender  = "image_annotation_render"
+	CanvasExtractVideoTail = "canvas_extract_video_tail"
 	SkillReadFile          = "skill_read_file"
 	SkillSearch            = "skill_search"
 	SkillMarketSearch      = "skill_market_search"
@@ -175,6 +176,7 @@ func policies() []Policy {
 		{Name: CanvasReadStoryboard, Kind: KindRead, Cacheable: true, CacheScope: CacheCanvasRevision, OffsetDefaults: offsets, RequiresCanvas: true},
 		{Name: ImageTextDetect, Kind: KindPrepare, RequiresCanvas: true},
 		{Name: ImageAnnotationRender, Kind: KindPrepare, RequiresCanvas: true, OutsideTransaction: true},
+		{Name: CanvasExtractVideoTail, Kind: KindWrite, RequiresCanvas: true, OutsideTransaction: true},
 		{Name: SkillReadFile, Kind: KindRead, Cacheable: true, CacheScope: CacheSkillVersion, OffsetDefaults: offsets, RequiresSkills: true, OutsideTransaction: true},
 		{Name: SkillSearch, Kind: KindRead, RequiresSkills: true, OutsideTransaction: true},
 		{Name: SkillMarketSearch, Kind: KindRead, OutsideTransaction: true},

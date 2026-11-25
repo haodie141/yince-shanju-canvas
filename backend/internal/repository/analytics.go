@@ -385,7 +385,8 @@ func whereTimeRange(query *gorm.DB, column string, from, to time.Time) *gorm.DB 
 }
 
 func (r *Repository) apiCallLogQuery(filter AnalyticsFilter) *gorm.DB {
-	query := whereTimeRange(r.db, "api_call_logs.created_at", filter.From, filter.To)
+	// 审核拒绝是站内准入事件，并非上游模型调用，不计入请求量和成功率。
+	query := whereTimeRange(r.db, "api_call_logs.created_at", filter.From, filter.To).Where("COALESCE(api_call_logs.source, '') <> ?", "prompt_moderation")
 	if filter.UserID != "" {
 		query = query.Where("api_call_logs.user_id = ?", filter.UserID)
 	}

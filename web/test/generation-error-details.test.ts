@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { CONTENT_MODERATION_MESSAGE, generationErrorMessage, generationFailureMetadata } from "../src/lib/generation-error";
 
+test("platform moderation reason remains visible in node errors", () => {
+    const original = "内容审核未通过，请修改提示词后重新生成：极端血腥";
+    const failure = generationFailureMetadata(new Error(original), "prompt");
+    expect(failure.errorDetails).toContain("原因：极端血腥");
+    expect(generationErrorMessage(failure.errorDetails)).toContain("原因：极端血腥");
+    expect(generationErrorMessage("内容审核暂不可用，请稍后重试")).toBe("内容审核暂不可用，请稍后重试。");
+});
+
 describe("safe upstream error details", () => {
     const detail = "非常抱歉，生成的图片可能违反了关于裸露、色情或情色内容的防护限制。请重试或修改提示语。";
     test("drops upstream detail from the card", () => {

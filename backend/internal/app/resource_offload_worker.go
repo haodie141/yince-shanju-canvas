@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"yingce/backend/internal/model"
+	"yingce/backend/internal/repository"
 
 	"gorm.io/gorm"
 )
@@ -165,10 +166,21 @@ func (s *Service) processResourceOffloadJob(ctx context.Context, job *model.Reso
 func (s *Service) cancelResourceOffload(job *model.ResourceOffloadJob, owner string, resource *model.Resource, reason string) {
 	if resource == nil || resource.Status == model.ResourceStatusDeleted {
 		target := &model.Resource{ID: job.ResourceID, UserID: job.UserID, Provider: job.TargetProvider, Endpoint: job.TargetEndpoint, Bucket: job.TargetBucket, StorageSettingID: job.TargetStorageSettingID, ObjectKey: job.TargetObjectKey}
-		if setting, err := s.ossSettingForResource(job.UserID, target); err == nil {
-			if err := deleteOSSObject(s.storageSettingWithRuntimePolicy(setting), job.TargetObjectKey); err != nil {
-				slog.Warn("resource offload target cleanup failed", "jobId", job.ID, "error", err)
+		if err := s.deleteUnreferencedStoredResource(target, func(repo *repository.Repository) error {
+			protected, err := repo.CanvasHistoryReferencesObject(target)
+			if err != nil {
+				return err
 			}
+			if protected {
+				return errors.New("资源仍被画布历史版本引用")
+			}
+			setting, err := s.ossSettingForResource(job.UserID, target)
+			if err != nil {
+				return err
+			}
+			return deleteOSSObject(s.storageSettingWithRuntimePolicy(setting), job.TargetObjectKey)
+		}); err != nil {
+			slog.Warn("resource offload target cleanup failed", "jobId", job.ID, "error", err)
 		}
 	}
 	s.removeUnreferencedLocalObject(job.LocalObjectKey, "")
@@ -178,18 +190,34 @@ func (s *Service) cancelResourceOffload(job *model.ResourceOffloadJob, owner str
 }
 
 func (s *Service) removeUnreferencedLocalObject(objectKey, playbackKey string) bool {
-	referenced, err := s.repo.LocalObjectReferenced(objectKey)
-	if err != nil || referenced {
-		return false
-	}
-	if err := s.deleteLocalResourceObject(objectKey); err != nil {
-		slog.Warn("resource offload local cleanup failed", "error", err)
-		return false
-	}
-	if playbackKey != "" {
-		if err := os.Remove(filepath.Join(s.dataDir, playbackDirName, filepath.Base(playbackKey))); err != nil && !errors.Is(err, os.ErrNotExist) {
-			slog.Warn("resource offload playback cleanup failed", "error", err)
+	resource := &model.Resource{Provider: "local", ObjectKey: objectKey}
+	err := s.repo.WithResourceObjectLock(resource, func(repo *repository.Repository) error {
+		pinned, err := repo.CanvasShareReferencesObject(resource)
+		if err != nil {
+			return err
 		}
+		featured, err := repo.FeaturedCanvasReferencesObject(resource)
+		if err != nil { return err }
+		referenced, err := repo.LocalObjectReferenced(objectKey)
+		if err != nil {
+			return err
+		}
+		if pinned || featured || referenced {
+			return errors.New("本地文件仍被引用")
+		}
+		if err := s.deleteLocalResourceObject(objectKey); err != nil {
+			return err
+		}
+		if playbackKey != "" {
+			if err := os.Remove(filepath.Join(s.dataDir, playbackDirName, filepath.Base(playbackKey))); err != nil && !errors.Is(err, os.ErrNotExist) {
+				slog.Warn("resource offload playback cleanup failed", "error", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		slog.Debug("resource offload local cleanup deferred", "error", err)
+		return false
 	}
 	return true
 }

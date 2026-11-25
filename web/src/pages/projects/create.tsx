@@ -152,7 +152,7 @@ export default function DramaCreatePage() {
     const unavailableCapabilities = missingCapabilities.filter((capability) => !(capability === "video" && noFittingVideo));
     const videoRatioProblem = dramaVideoRatioIssue(videoOption, aspectRatio);
     // 服务端只在支持图生视频时下发 tailFrameChain，缺省即不支持。
-    const tailFrameProblem = videoContinuity === "tail_frame" && Boolean(videoOption) && !videoOption?.tailFrameChain;
+    const tailFrameProblem = Boolean(videoOption) && (videoContinuity === "tail_frame" ? !videoOption?.tailFrameChain : videoContinuity === "reference_frame" ? !videoOption?.referenceFrameChain : false);
     const settings = {
         aspectRatio,
         episodeSeconds,
@@ -658,7 +658,7 @@ export default function DramaCreatePage() {
                             </div>
                             {tailFrameProblem ? (
                                 <p className="drama-cfg-note" role="alert">
-                                    当前视频模型不支持图生视频，无法尾帧续接；请改用并行出片或换模型。
+                                    当前视频模型不支持所选接续方式，请更换接续方式或模型。
                                 </p>
                             ) : null}
                         </div>

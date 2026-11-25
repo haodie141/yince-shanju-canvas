@@ -18,6 +18,7 @@ export type ApprovalState = { approvalId: string; detail: Record<string, unknown
 const CANVAS_MUTATION_TOOLS = new Set([
     "canvas_apply_ops",
     "canvas_arrange_nodes",
+    "canvas_extract_video_tail",
     "canvas_build_board",
     "canvas_create_storyboard",
     "canvas_edit_storyboard",
@@ -150,7 +151,7 @@ export function applyAgentEvent(
         const planItems = payload.items as CloudAgentPlanItem[];
         setMessages((current) => {
             const index = current.findIndex((entry) => entry.id === id);
-            const message: CloudAgentChatMessage = { id, role: "tool", text: "", planItems };
+            const message: CloudAgentChatMessage = { id, role: "tool", text: "", planItems, planInherited: payload.inherited === true };
             if (index < 0) return [...current, message];
             const next = [...current];
             next[index] = message;

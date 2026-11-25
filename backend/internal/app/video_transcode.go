@@ -304,6 +304,10 @@ func (s *Service) OpenResourcePlaybackRange(userID string, resourceID string) (*
 	if err != nil {
 		return nil, err
 	}
+	return s.openResourcePlayback(resource)
+}
+
+func (s *Service) openResourcePlayback(resource *model.Resource) (*ResourceStream, error) {
 	if resource == nil || resource.Status != model.ResourceStatusReady || resource.Provider != "local" ||
 		resource.PlaybackStatus != model.PlaybackStatusReady || resource.PlaybackObjectKey == "" {
 		return nil, ErrPlaybackNotReady

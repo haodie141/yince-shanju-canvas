@@ -181,7 +181,8 @@ func (s *Service) drainResourceDeletionJobs(limit int) {
 			Endpoint: job.Endpoint, Bucket: job.Bucket, StorageSettingID: job.StorageSettingID,
 			ObjectKey: job.ObjectKey,
 		}
-		if err := s.deleteStoredResourceObject(job.UserID, resource); err != nil {
+		err = s.deleteUnreferencedStoredResource(resource, nil)
+		if err != nil {
 			delay := resourceDeletionRetryDelay(job.Attempts)
 			if retryErr := s.repo.RetryResourceDeletionJob(job.ID, owner, err.Error(), time.Now().Add(delay)); retryErr != nil {
 				log.Printf("resource deletion worker retry update failed for %s: %v", job.ID, retryErr)

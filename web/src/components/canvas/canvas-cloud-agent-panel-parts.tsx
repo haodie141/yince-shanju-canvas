@@ -36,7 +36,7 @@ import { Kbd } from "@/components/ui/base/kbd";
 import { ModelPicker } from "@/components/model-picker";
 import { ThinkingLevelSlider } from "@/components/thinking-level-slider";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
-import { LEGACY_TEXT_THINKING_CONFIG, THINKING_LEVEL_LABELS, resolveThinkingLevel, thinkingLevelsFor } from "@/lib/text-thinking";
+import { LEGACY_TEXT_THINKING_CONFIG, resolveThinkingLevel, thinkingLevelsFor, thinkingRequestLabel } from "@/lib/text-thinking";
 import { agentImageApproval, agentVideoApproval, agentApprovalModel, agentBatchVideoDurations, agentMediaSettings } from "@/lib/canvas/agent-media-approval";
 import { mediaSettingIssues } from "@/lib/media-settings";
 import { agentApprovalPresentation } from "@/lib/canvas/agent-approval-presentation";
@@ -895,7 +895,8 @@ export function ComposerControls({
     const thinkingAnchor = usePopoverAnchorAlign(thinkingOpen);
     const thinking = modelCapabilityConfigFor(config, selectedModel).text?.thinking || LEGACY_TEXT_THINKING_CONFIG;
     const levels = thinkingLevelsFor(thinking);
-    const thinkingLabel = reasoningMode === "auto" ? "默认" : reasoningMode === "deep" ? "深入" : THINKING_LEVEL_LABELS[reasoningMode];
+    const resolvedThinking = resolveThinkingLevel(thinking, reasoningMode);
+    const thinkingLabel = thinkingRequestLabel(reasoningMode, resolvedThinking);
     const permissionVisual = agentPermissionVisual(permissionMode);
     const PermissionIcon = permissionVisual.icon;
     return (
@@ -923,7 +924,7 @@ export function ComposerControls({
                     arrow={false}
                     content={
                         <div className="agent-thinking-popover">
-                            <ThinkingLevelSlider levels={levels} value={reasoningMode} resolvedLevel={resolveThinkingLevel(thinking, reasoningMode)} onChange={onReasoningModeChange} />
+                            <ThinkingLevelSlider levels={levels} value={reasoningMode} resolvedLevel={resolvedThinking} showResolvedDefault onChange={onReasoningModeChange} />
                         </div>
                     }
                 >

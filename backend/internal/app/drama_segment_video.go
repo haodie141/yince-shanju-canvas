@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -27,6 +28,29 @@ type dramaRevisionPayload struct {
 	MaxChars int `json:"maxChars,omitempty"`
 	// Condensed 是本次撰写已做的自动精简次数。
 	Condensed int `json:"condensed,omitempty"`
+}
+
+var dramaReferenceToken = regexp.MustCompile(`@?参考图\s*([0-9]+)`)
+
+// 图片未发送时去掉对应编号，其余编号按实际发送顺序映射，避免指到接续画面或其他素材。
+func dramaSentReferenceText(text string, references []DramaSegmentReference) string {
+	labels := make([]string, len(references))
+	sent := 0
+	for i, reference := range references {
+		labels[i] = "未附图"
+		if reference.Sent {
+			sent++
+			labels[i] = fmt.Sprintf("参考图%d", sent)
+		}
+	}
+	return dramaReferenceToken.ReplaceAllStringFunc(text, func(token string) string {
+		match := dramaReferenceToken.FindStringSubmatch(token)
+		n, err := strconv.Atoi(match[1])
+		if err != nil || n < 1 || n > len(labels) {
+			return token
+		}
+		return labels[n-1]
+	})
 }
 
 func encodeDramaRevision(revision int64) string {
@@ -125,18 +149,32 @@ func (s *Service) prepareDramaSegment(settings DramaSettings, draft dramaSegment
 	}
 	refs := []any{}
 	header := []string{}
+	var continuityReference any
 	if previous != nil {
 		request.Operation = "image_to_video"
+		if settings.VideoContinuity == DramaContinuityReference {
+			request.Operation = "reference_to_video"
+		}
 		request.FirstFramePending = previous.VideoStatus != model.DramaMediaReady || previous.TailFrameResourceID == ""
 		if !request.FirstFramePending {
 			request.FirstFrameResourceID = previous.TailFrameResourceID
-			ref, err := s.dramaResourceReference(previous.TailFrameResourceID, "first-frame", "first_frame")
+			role := "first_frame"
+			if settings.VideoContinuity == DramaContinuityReference {
+				role = ""
+			}
+			ref, err := s.dramaResourceReference(previous.TailFrameResourceID, "first-frame", role)
 			if err != nil {
 				return request, nil, nil, err
 			}
-			refs = append(refs, ref)
+			if settings.VideoContinuity == DramaContinuityReference {
+				continuityReference = ref
+			} else {
+				refs = append(refs, ref)
+			}
 		}
-		header = append(header, "首帧图为上一段视频的最后一帧，不占参考图编号。")
+		if settings.VideoContinuity != DramaContinuityReference {
+			header = append(header, "首帧图为上一段视频的最后一帧，不占参考图编号。")
+		}
 	} else if profile.supports("reference_to_video") {
 		request.Operation = "reference_to_video"
 	} else {
@@ -227,6 +265,15 @@ func (s *Service) prepareDramaSegment(settings DramaSettings, draft dramaSegment
 			}
 		}
 		request.References = append(request.References, reference)
+	}
+	if previous != nil && settings.VideoContinuity == DramaContinuityReference {
+		for i := range header {
+			header[i] = dramaSentReferenceText(header[i], request.References)
+		}
+		header = append(header, fmt.Sprintf("参考图%d是上一段视频的最后一帧，请参考该画面自然接续。", len(refs)+1))
+		if continuityReference != nil {
+			refs = append(refs, continuityReference)
+		}
 	}
 	audios, err := s.dramaSegmentAudioReferences(&request, profile, draft.shots, casts, len(refs) > 0, segment.AudioCastIDsJSON)
 	if err != nil {
@@ -449,13 +496,17 @@ func (r *dramaRun) submitSegmentVideo(job *model.DramaJob) (*model.Task, bool, e
 		}
 		metadata := r.metadata(job)
 		metadata["videoEditOperation"] = request.Operation
-		if previous != nil {
+		if previous != nil && r.settings.VideoContinuity != DramaContinuityReference {
 			metadata["videoStartFrameNodeId"] = "first-frame"
 		}
 		// 画面参数与声音开关取自预演：比例或分辨率标签按模型能力合同换算，不出声的模型显式关闭声音。
 		config := map[string]any{"videoSeconds": itoa(request.Seconds), "videoGenerateAudio": strconv.FormatBool(request.GenerateAudio)}
 		dramaVideoScreen{Size: request.Size, Resolution: request.Resolution}.apply(config)
-		prompt := strings.TrimSpace(request.Header + "\n\n" + firstNonEmpty(segment.VideoPromptOverride, segment.VideoPrompt))
+		body := firstNonEmpty(segment.VideoPromptOverride, segment.VideoPrompt)
+		if previous != nil && r.settings.VideoContinuity == DramaContinuityReference {
+			body = dramaSentReferenceText(body, request.References)
+		}
+		prompt := strings.TrimSpace(request.Header + "\n\n" + body)
 		if chars := utf8.RuneCountInString(prompt); request.PromptMaxChars > 0 && chars > request.PromptMaxChars {
 			if strings.TrimSpace(segment.VideoPromptOverride) != "" {
 				return nil, false, fmt.Errorf("手动改写的视频提示词加上开头的参考图说明共 %d 个字符，超过所选视频模型上限 %d 个字符；请精简改写内容，或恢复模型版本后按上限重新撰写", chars, request.PromptMaxChars)

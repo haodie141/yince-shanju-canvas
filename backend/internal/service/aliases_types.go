@@ -4,6 +4,11 @@ import "yingce/backend/internal/app"
 
 type AgentAvatarBundleManifest = app.AgentAvatarBundleManifest
 type AgentAvatarBundleImport = app.AgentAvatarBundleImport
+type FeaturedCanvasRequest = app.FeaturedCanvasRequest
+type FeaturedCanvasView = app.FeaturedCanvasView
+type FeaturedSharePreview = app.FeaturedSharePreview
+type FeaturedSharePreviewRequest = app.FeaturedSharePreviewRequest
+type FeaturedReorderRequest = app.FeaturedReorderRequest
 
 const (
 	WorkbenchKindImage = app.WorkbenchKindImage
@@ -201,6 +206,8 @@ type (
 	EmailSettingRequest                    = app.EmailSettingRequest
 	ErrorReason                            = app.ErrorReason
 	FeatureAvailability                    = app.FeatureAvailability
+	DefaultModels                          = app.DefaultModels
+	PublicDefaultModels                    = app.PublicDefaultModels
 	ImageCapabilityConfig                  = app.ImageCapabilityConfig
 	ImageQualityConfig                     = app.ImageQualityConfig
 	ImageReferenceConfig                   = app.ImageReferenceConfig
@@ -312,6 +319,7 @@ type (
 	ResourceStream                         = app.ResourceStream
 	ResponseInterceptionRule               = app.ResponseInterceptionRule
 	ResponseInterceptionSetting            = app.ResponseInterceptionSetting
+	PromptModerationSetting                = app.PromptModerationSetting
 	RouteSimulationCandidate               = app.RouteSimulationCandidate
 	RouteSimulationResult                  = app.RouteSimulationResult
 	RoutedModel                            = app.RoutedModel

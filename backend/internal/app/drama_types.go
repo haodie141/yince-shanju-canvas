@@ -192,6 +192,7 @@ type DramaSettings struct {
 // parallel 每段只按角色/场景参考图独立生成，同集各段同时提交，适合按班次批量出片的渠道。
 const (
 	DramaContinuityTailFrame = "tail_frame"
+	DramaContinuityReference = "reference_frame"
 	DramaContinuityParallel  = "parallel"
 )
 
@@ -235,7 +236,7 @@ func (s DramaSettings) normalized() DramaSettings {
 	if isAutomaticVideoResolution(s.VideoResolution) {
 		s.VideoResolution = ""
 	}
-	if s.VideoContinuity != DramaContinuityParallel {
+	if s.VideoContinuity != DramaContinuityParallel && s.VideoContinuity != DramaContinuityReference {
 		// 早于该设置创建的作品一直按尾帧续接，保持原行为。
 		s.VideoContinuity = DramaContinuityTailFrame
 	}
@@ -801,6 +802,7 @@ type DramaModelOption struct {
 	MinReferenceImages int `json:"minReferenceImages,omitempty"`
 	// TailFrameChain 仅视频模型：是否支持图生视频，可用于“尾帧续接”；不支持的模型只能并行出片。
 	TailFrameChain bool `json:"tailFrameChain,omitempty"`
+	ReferenceFrameChain bool `json:"referenceFrameChain,omitempty"`
 	// VideoRatios 仅视频模型：能准确给出的作品画幅；不含作品画幅的模型不能用于该作品。
 	VideoRatios []string `json:"videoRatios,omitempty"`
 	// GenerateAudio 仅视频模型：是否同步生成对白与音效；false 时段视频没有声音。

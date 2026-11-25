@@ -1,5 +1,5 @@
 import { mediaSettingIssues } from "@/lib/media-settings";
-import { Button, InputNumber, Modal } from "antd";
+import { App, Button, InputNumber, Modal } from "antd";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowUp, ChevronDown, FileText, ImagePlus, LayoutList, LoaderCircle, Maximize2, Music2, SlidersHorizontal, Video, X, PenLine } from "lucide-react";
@@ -48,6 +48,7 @@ import {
 } from "@/lib/canvas/canvas-resource-references";
 import { promptOptimizerPlugin, PROMPT_OPTIMIZER_PLUGIN_ID } from "@/lib/plugins/builtin/prompt-optimizer";
 import { createPluginHostContext } from "@/services/plugin-host";
+import { fetchPluginRuntimeState } from "@/services/api/plugins";
 import { usePluginStore } from "@/stores/use-plugin-store";
 import { useResolvedCanvasResourceReferences } from "./use-resolved-canvas-resource-references";
 import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-models";
@@ -118,6 +119,7 @@ export function CanvasNodePromptPanel({
     onListGenerate,
     referenceImageSize,
 }: CanvasNodePromptPanelProps) {
+    const { message } = App.useApp();
     const globalConfig = useEffectiveConfig();
     const fontSize = useCanvasPromptPreferencesStore((state) => state.fontSize);
     const themeName = useActiveTheme();
@@ -126,6 +128,7 @@ export function CanvasNodePromptPanel({
     // 画布节点选几张等于拆几单，上限按账号同时任务数。
     const batchLimit = useGenerationBatchLimit();
     const promptOptimizerInstallation = usePluginStore((state) => state.installations.find((item) => item.manifest.id === PROMPT_OPTIMIZER_PLUGIN_ID));
+    const promptOptimizerState = usePluginStore((state) => state.pluginStates[PROMPT_OPTIMIZER_PLUGIN_ID]);
     const promptOptimizerEnabled = usePluginStore((state) => state.pluginStates[PROMPT_OPTIMIZER_PLUGIN_ID]?.effectiveEnabled ?? Boolean(state.installations.find((item) => item.manifest.id === PROMPT_OPTIMIZER_PLUGIN_ID)?.enabled));
     const simpleMode = workspaceMode === "simple";
     const mode = defaultMode(node.type);
@@ -156,6 +159,7 @@ export function CanvasNodePromptPanel({
     const [manualPromptHeight, setManualPromptHeight] = useState<number | null>(null);
     const [paramsExpanded, setParamsExpanded] = useState(false); // #98 决策2：B区参数区折叠状态（手风琴）
     const [promptOptimizerOpen, setPromptOptimizerOpen] = useState(false);
+    const [promptOptimizerStarting, setPromptOptimizerStarting] = useState(false);
     const [autoLinkEnabled, setAutoLinkEnabled] = useState(true);
     const resolvedMentionReferences = useResolvedCanvasResourceReferences(mentionReferences, { projectId });
     const promptToolReferences = useMemo(() => parseToolMentionTokens(prompt).map(({ toolId, label, type, icon }) => buildToolMentionReference(toolId, label, type, icon)), [prompt]);
@@ -212,9 +216,9 @@ export function CanvasNodePromptPanel({
         videoSeconds: mode === "video" ? config.videoSeconds : undefined,
     };
     const promptOptimizerProvider = useMemo(() => {
-        if (!promptOptimizerEnabled || !promptOptimizerInstallation || !promptOptimizerPlugin.createPromptOptimizer) return null;
+        if ((!promptOptimizerEnabled && !(mode === "video" && promptOptimizerOpen && promptOptimizerState?.platformAvailable)) || !promptOptimizerInstallation || !promptOptimizerPlugin.createPromptOptimizer) return null;
         return promptOptimizerPlugin.createPromptOptimizer(createPluginHostContext(promptOptimizerPlugin, promptOptimizerInstallation, globalConfig));
-    }, [globalConfig, promptOptimizerEnabled, promptOptimizerInstallation]);
+    }, [globalConfig, mode, promptOptimizerEnabled, promptOptimizerInstallation, promptOptimizerOpen, promptOptimizerState?.platformAvailable]);
     // 张数是拆单数，上限与执行链路的 getGenerationCount 保持一致。
     const generationCount = getGenerationCount(config.count);
     const priceChannel = resolveModelChannel(config, config.model);
@@ -265,7 +269,26 @@ export function CanvasNodePromptPanel({
         .join("；");
     const isSubmitDisabled = Boolean(settingsError) || (!isRunning && !prompt.trim());
     const canExpandPrompt = mode === "image" || mode === "video";
-    const canOptimizePrompt = Boolean(promptOptimizerProvider) && canExpandPrompt;
+    const canOptimizePrompt = mode === "video" || (Boolean(promptOptimizerProvider) && canExpandPrompt);
+    const openPromptOptimizer = async () => {
+        if (promptOptimizerStarting) return;
+        setPromptOptimizerStarting(true);
+        try {
+            const store = usePluginStore.getState();
+            if (mode === "video") {
+                const { states } = await fetchPluginRuntimeState();
+                const state = states[PROMPT_OPTIMIZER_PLUGIN_ID];
+                store.setPluginStates(states);
+                if (!state?.platformAvailable) throw new Error(state?.blockedReason || "提示词优化暂不可用");
+            }
+            store.ensurePlugin(promptOptimizerPlugin.manifest);
+            setPromptOptimizerOpen(true);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "提示词优化暂不可用，请稍后重试");
+        } finally {
+            setPromptOptimizerStarting(false);
+        }
+    };
     const isPortraitTexture = mode === "image" && Boolean(node.metadata?.portraitTexture);
     const autoMentionedPrompt = useMemo(() => autoMentionCanvasResourceReferences(prompt, resolvedMentionReferences), [prompt, resolvedMentionReferences]);
     const canAutoMention = autoMentionedPrompt !== prompt;
@@ -361,6 +384,8 @@ export function CanvasNodePromptPanel({
         if (!text || isRunning) return false;
         if (mode === "text" && node.metadata?.listMode && onListGenerate) onListGenerate(node.id, text);
         else onGenerate(node.id, mode, text);
+        // 提交后立即收起创作面板，让生成进度直接显示在节点上。
+        onClose?.();
         return true;
     };
 
@@ -444,9 +469,9 @@ export function CanvasNodePromptPanel({
                 ) : null}
                 {canOptimizePrompt ? (
                     <Tooltip title="用 AI 润色提示词">
-                        <button type="button" className="canvas-node-composer-header-action is-labeled" onClick={() => setPromptOptimizerOpen(true)} aria-label="润色提示词">
+                        <button type="button" className="canvas-node-composer-header-action is-labeled" disabled={promptOptimizerStarting} onClick={() => void openPromptOptimizer()} aria-label="提示词优化">
                             <PenLine />
-                            <span>润色</span>
+                            <span>{mode === "video" ? "提示词优化" : "润色"}</span>
                         </button>
                     </Tooltip>
                 ) : null}
@@ -668,7 +693,8 @@ export function CanvasNodePromptPanel({
             targetModel={modelOptionName(config.model) || config.model}
             targetProtocol={priceChannel.modelCosts?.find((item) => item.model === modelOptionName(config.model))?.protocol || priceChannel.interfaceType}
             config={globalConfig}
-            optimizerModel={globalConfig.textModel}
+            videoSettings={{ seconds: config.videoSeconds, size: config.size, resolution: config.vquality }}
+            optimizerModel={globalConfig.optimizerModel || globalConfig.textModel}
             references={activeReferences}
             provider={promptOptimizerProvider}
             onClose={() => setPromptOptimizerOpen(false)}

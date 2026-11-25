@@ -51,6 +51,9 @@ func (s *Service) resolveDramaLogicalModel(access *userGroupAccess, id, capabili
 
 // dramaSegmentOperation 是剧情段视频在该衔接方式下的主要生成方式，用于报价与能力校验。
 func dramaSegmentOperation(settings DramaSettings, profile dramaVideoProfile) (string, map[string]int) {
+	if settings.VideoContinuity == DramaContinuityReference {
+		return "reference_to_video", map[string]int{"image": 1}
+	}
 	if !settings.parallelVideo() {
 		return "image_to_video", map[string]int{"image": 1}
 	}
@@ -285,7 +288,7 @@ func preferredDramaOption(options []DramaModelOption, settings DramaSettings) (D
 
 // 分辨率不参与挑选：先选模型，模型给不出作品分辨率时按模型默认出片。
 func dramaVideoOptionFits(option DramaModelOption, settings DramaSettings) bool {
-	return (settings.parallelVideo() || option.TailFrameChain) && slices.Contains(option.VideoRatios, settings.AspectRatio)
+	return (settings.parallelVideo() || (settings.VideoContinuity == DramaContinuityReference && option.ReferenceFrameChain) || (settings.VideoContinuity != DramaContinuityReference && option.TailFrameChain)) && slices.Contains(option.VideoRatios, settings.AspectRatio)
 }
 
 // dramaVideoResolutionKey 让 720、720p、720P、4k、2160p 这类写法按同一档位比较。
@@ -403,7 +406,10 @@ func (p dramaVideoProfile) maxSeconds() int {
 
 // continuityIssue 返回模型不支持作品段落衔接方式的原因；空串表示可用。
 func (p dramaVideoProfile) continuityIssue(settings DramaSettings) string {
-	if !settings.parallelVideo() && !p.supports("image_to_video") {
+	if settings.VideoContinuity == DramaContinuityReference && (!p.supports("reference_to_video") || p.MaxImages < 1) {
+		return "所选视频模型不支持参考图接续，请改用其他衔接方式或更换模型"
+	}
+	if !settings.parallelVideo() && settings.VideoContinuity != DramaContinuityReference && !p.supports("image_to_video") {
 		return "所选视频模型不支持图生视频，无法用上一段尾帧续接；请在制作设置里改用“并行出片”或换用支持图生视频的模型"
 	}
 	return ""
@@ -983,6 +989,7 @@ func (s *Service) dramaModelOption(choice DramaModelChoice, capability, label, p
 			option.MaxAudios = profile.MaxAudios
 			option.MinReferenceImages = profile.MinImages
 			option.TailFrameChain = profile.supports("image_to_video")
+			option.ReferenceFrameChain = profile.supports("reference_to_video") && profile.MaxImages > 0
 			option.VideoRatios = profile.ratios()
 			audio := profile.GenerateAudio
 			option.GenerateAudio = &audio

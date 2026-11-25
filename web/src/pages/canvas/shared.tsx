@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { App, Button } from "antd";
-import { Clapperboard, Eye, FileText, Image as ImageIcon, LockKeyhole, LogIn, Send, Share2, Video } from "lucide-react";
-import { Link, useParams } from "react-router";
+import { Clapperboard, Copy, Eye, FileText, Image as ImageIcon, LockKeyhole, LogIn, Send, Share2, Video } from "lucide-react";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { nanoid } from "nanoid";
+import { sha256 } from "@noble/hashes/sha256";
 
 import { AuthLoginLink } from "@/components/auth/auth-login-link";
 import { ConnectionPath } from "@/components/canvas/canvas-connections";
@@ -20,24 +21,35 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { FOLDER_COLLAPSED_HEIGHT, FOLDER_COLLAPSED_WIDTH, isCanvasFolderNode, isFrameNode, isNodeHiddenByCollapsedFrame, resolveFrameConnection } from "@/lib/canvas/canvas-frame";
 import { ensureMediaNodeMinimumSize } from "@/lib/canvas/canvas-node-size";
 import { getContextResourceNodes } from "@/lib/canvas/canvas-resource-references";
-import { getPublicCanvasShare } from "@/services/api/canvas-share";
+import { cloneCanvasShare, getPublicCanvasShare } from "@/services/api/canvas-share";
 import { useCanvasThemeStore, useCanvasThemeScope } from "@/stores/canvas/use-canvas-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type Position, type ViewportTransform } from "@/types/canvas";
 import { nodeGenerationPrompt } from "@/lib/canvas/generation-contract";
 import { useThemePack } from "@/themes/use-theme-pack";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
+import { useUserStore } from "@/stores/use-user-store";
+import { useAuthDialogStore } from "@/stores/use-auth-dialog-store";
+import { flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { resourceFileUrl, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
+import { hasRemoteUserDataSyncSession, loadCanvasProjectForEditing, saveRemoteUserDataNow } from "@/services/user-data-sync";
 type ContextMenu = { x: number; y: number; world: Position; nodeId?: string };
 type DragState = { primaryId: string; nodeIds: string[]; startX: number; startY: number; origins: Map<string, Position>; moved: boolean };
+async function shareCopyIntent(token: string) {
+    return Array.from(sha256(new TextEncoder().encode(token)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 export default function SharedCanvasPage() {
     useCanvasThemeScope();
     const { token = "" } = useParams();
-    const { message } = App.useApp();
+    const requestedSnapshot = new URLSearchParams(useLocation().search).get("snapshot") || "";
+    const navigate = useNavigate();
+    const { message, modal } = App.useApp();
     const colorTheme = useCanvasThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const containerRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<ViewportTransform>({ x: 0, y: 0, k: 1 });
     const dragRef = useRef<DragState | null>(null);
+    const copyAbortRef = useRef<AbortController | null>(null);
     const toolbarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [title, setTitle] = useState("共享画布");
     const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
@@ -46,14 +58,20 @@ export default function SharedCanvasPage() {
     const [backgroundMode, setBackgroundMode] = useState<"lines" | "dots" | "blank">("dots");
     const [viewport, setViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
     const [infoNodeId, setInfoNodeId] = useState<string | null>(null);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [dragOffset, setDragOffset] = useState<Position | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
+    const [allowCopy, setAllowCopy] = useState(false);
+    const [snapshotId, setSnapshotId] = useState("");
+    const [copying, setCopying] = useState(false);
+    const [copyProgress, setCopyProgress] = useState("");
     const pack = useThemePack();
     const brandName = useAppearanceStore((state) => state.appearance.brandName);
+    const user = useUserStore((state) => state.user);
 
     const unauthorized = useCallback(() => message.warning("未授权：分享画布仅供查看，该操作不会执行。"), [message]);
     const infoNode = nodes.find((node) => node.id === infoNodeId) || null;
@@ -96,9 +114,11 @@ export default function SharedCanvasPage() {
             if (appliedShareTheme && state.theme !== previous.theme && state.theme !== appliedShareTheme) themeChangedAfterApply = true;
         });
         setLoading(true);
-        getPublicCanvasShare(token)
-            .then(({ project }) => {
+        getPublicCanvasShare(token, requestedSnapshot)
+            .then(({ project, allowCopy: permitted, snapshotId: version }) => {
                 if (!active) return;
+                setAllowCopy(Boolean(permitted));
+                setSnapshotId(version || "");
                 setTitle(project.title || "共享画布");
                 setNodes((project.nodes || []).map(ensureMediaNodeMinimumSize));
                 setConnections(project.connections || []);
@@ -124,7 +144,126 @@ export default function SharedCanvasPage() {
                 useCanvasThemeStore.getState().setTheme(themeBeforeShare);
             }
         };
-    }, [token]);
+    }, [token, requestedSnapshot]);
+
+    const copyCanvas = async () => {
+        if (copying || copyAbortRef.current) return;
+        if (!user) {
+            sessionStorage.setItem("canvas-share-copy-after-login", await shareCopyIntent(token));
+            useAuthDialogStore.getState().openDialog("login", null);
+            message.info("登录后即可保存画布副本");
+            return;
+        }
+        setCopying(true);
+        const controller = new AbortController();
+        copyAbortRef.current = controller;
+        let uploaded = 0;
+        try {
+            if (!useCanvasStore.getState().hydrated || !hasRemoteUserDataSyncSession()) throw new Error("账号画布正在同步，请稍后重试");
+            const shared = await getPublicCanvasShare(token, requestedSnapshot);
+            if (!shared.allowCopy) throw new Error("分享者未允许保存副本或已关闭该权限");
+            if (shared.copyIssues?.length) {
+                modal.warning({ title: "部分内容暂不能复制", content: <div><p>为避免保存不完整的画布，请联系分享者处理以下内容后重试：</p><ul>{shared.copyIssues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></div> });
+                return;
+            }
+            if ((shared.snapshotId || "") !== snapshotId) throw new Error("分享内容已更新，请刷新页面后再保存");
+            if (snapshotId) {
+                const key = `canvas-share-clone:${await shareCopyIntent(token)}:${user.id}`;
+                let pending: { snapshotId?: string; requestId?: string } = {};
+                try { pending = JSON.parse(sessionStorage.getItem(key) || "{}"); } catch { /* 重置损坏的请求记录 */ }
+                const requestId = pending.snapshotId === snapshotId && pending.requestId ? pending.requestId : nanoid();
+                sessionStorage.setItem(key, JSON.stringify({ snapshotId, requestId }));
+                setCopyProgress("正在保存画布");
+                const { canvasId } = await cloneCanvasShare(token, snapshotId, requestId, controller.signal);
+                sessionStorage.removeItem(key);
+                if (useUserStore.getState().user?.id !== user.id) throw new Error("副本已保存，请切回原账号查看");
+                try { await loadCanvasProjectForEditing(canvasId); } catch { message.warning("副本已保存，打开画布时请稍候重试"); }
+                message.success("已保存到我的画布");
+                navigate(`/canvas/${encodeURIComponent(canvasId)}`);
+                return;
+            }
+            const copied = new Map<string, { storageKey: string; url: string }>();
+            const resourcePrefix = `/api/public/canvas-shares/${token}/resources/`;
+            const urls = new Map<string, "image" | "video" | "audio">();
+            const collect = (value: unknown, kind: "image" | "video" | "audio", key = "") => {
+                if (typeof value === "string" && value.startsWith(resourcePrefix)) {
+                    if (!urls.has(value)) urls.set(value, kind);
+                } else if (Array.isArray(value)) value.forEach((child) => collect(child, kind, key));
+                else if (value && typeof value === "object") Object.entries(value).forEach(([name, child]) => collect(child, name === "videoPreview" || name === "references" ? "image" : kind, name));
+            };
+            shared.project.nodes.forEach((node) => collect(node.metadata, node.type === CanvasNodeType.Video ? "video" : node.type === CanvasNodeType.Audio ? "audio" : "image"));
+            let completed = 0;
+            for (const [url, fallbackKind] of urls) {
+                if (controller.signal.aborted || useUserStore.getState().user?.id !== user.id) throw new Error("操作已停止或登录账号已切换");
+                if (!copied.has(url)) {
+                    setCopyProgress(`正在复制素材 ${completed + 1}/${urls.size}`);
+                    const response = await fetch(url, { credentials: "same-origin", signal: controller.signal });
+                    if (!response.ok) throw new Error(`素材读取失败（${response.status}），请联系分享者检查素材`);
+                    const blob = await response.blob();
+                    if (!blob.size || /^(text\/html|application\/json)/i.test(blob.type)) throw new Error("素材不可用，无法保存");
+                    const kind = blob.type.startsWith("video/") ? "video" : blob.type.startsWith("audio/") ? "audio" : blob.type.startsWith("image/") ? "image" : fallbackKind;
+                    const resource = await uploadResourceFile(blob, kind, { fileName: kind });
+                    uploaded++;
+                    copied.set(url, { storageKey: resourceStorageKey(resource.id), url: resourceFileUrl(resource.id) });
+                }
+                completed++;
+            }
+            const latest = await getPublicCanvasShare(token);
+            if (!latest.allowCopy) throw new Error("分享者已关闭保存副本权限");
+            if (JSON.stringify(latest.project) !== JSON.stringify(shared.project)) throw new Error("分享画布在复制期间发生变化，请重新保存副本");
+            if (controller.signal.aborted || useUserStore.getState().user?.id !== user.id) throw new Error("操作已停止或登录账号已切换");
+            const rewrite = (value: unknown, key = ""): unknown => {
+                if (typeof value === "string") {
+                    const media = copied.get(value);
+                    return media ? (key === "content" || key === "previewContent" ? media.url : media.storageKey) : value;
+                }
+                if (Array.isArray(value)) return value.map((item) => rewrite(item, key));
+                if (!value || typeof value !== "object") return value;
+                const source = value as Record<string, unknown>;
+                const result = Object.fromEntries(Object.entries(source).map(([name, child]) => [name, rewrite(child, name)]));
+                const media = typeof source.content === "string" ? copied.get(source.content) : undefined;
+                if (media) result.storageKey = media.storageKey;
+                return result;
+            };
+            const nodes = shared.project.nodes.map((node) => {
+                const metadata = rewrite(node.metadata) as CanvasNodeData["metadata"];
+                return metadata?.status === "loading" ? { ...node, metadata: { ...metadata, status: "idle" as const } } : { ...node, metadata };
+            });
+            setCopyProgress("正在保存画布");
+            const id = useCanvasStore.getState().importProject({ ...shared.project, id: undefined, projectId: undefined, title: `${shared.project.title || "共享画布"}（副本）`, nodes, chatSessions: [], activeChatId: null });
+            await flushCanvasStorePersistence();
+            try {
+                await saveRemoteUserDataNow(id);
+            } catch {
+                if (useUserStore.getState().user?.id !== user.id) throw new Error("登录账号已切换，请切回原账号查看本机副本");
+                message.warning("副本已保存在本机，但云端同步未完成；请在画布列表检查同步状态，避免重复保存。");
+                navigate(`/canvas/${encodeURIComponent(id)}`);
+                return;
+            }
+            message.success("已保存到我的画布");
+            navigate(`/canvas/${encodeURIComponent(id)}`);
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : "保存副本失败，请稍后重试";
+            modal.error({ title: "保存副本未完成", content: uploaded ? `${detail}。已有 ${uploaded} 个素材上传到当前账号，可能占用存储空间，请检查后再重试。` : detail });
+        } finally {
+            if (copyAbortRef.current === controller) copyAbortRef.current = null;
+            setCopying(false);
+            setCopyProgress("");
+        }
+    };
+
+    useEffect(() => () => copyAbortRef.current?.abort(), []);
+
+    useEffect(() => {
+        if (!user || loading || !allowCopy || !sessionStorage.getItem("canvas-share-copy-after-login")) return;
+        let active = true;
+        void shareCopyIntent(token).then((intent) => {
+            if (!active || sessionStorage.getItem("canvas-share-copy-after-login") !== intent) return;
+            sessionStorage.removeItem("canvas-share-copy-after-login");
+            void copyCanvas();
+        });
+        return () => { active = false; };
+    }, [user, loading, allowCopy, token]);
 
     useEffect(() => {
         const onMove = (event: MouseEvent) => {
@@ -318,11 +457,16 @@ export default function SharedCanvasPage() {
                         只读分享
                     </span>
                 </div>
-                <AuthLoginLink className="pointer-events-auto">
-                    <Button type="text" icon={<LogIn className="size-4" />}>
-                        登录
-                    </Button>
-                </AuthLoginLink>
+                <div className="pointer-events-auto flex items-center gap-2">
+                {allowCopy ? <Button type="text" icon={<Copy className="size-4" />} loading={copying} onClick={() => void copyCanvas()}>{copyProgress || "保存到我的画布"}</Button> : null}
+                {user ? (
+                    <Link className="pointer-events-auto" to="/canvas"><Button type="text">我的画布</Button></Link>
+                ) : (
+                    <AuthLoginLink className="pointer-events-auto">
+                        <Button type="text" icon={<LogIn className="size-4" />}>登录</Button>
+                    </AuthLoginLink>
+                )}
+                </div>
             </header>
 
             <CanvasViewport
@@ -393,6 +537,8 @@ export default function SharedCanvasPage() {
                             isConnectionTarget={false}
                             showImageInfo={false}
                             readOnly
+                            mediaActive={playingVideoId === node.id}
+                            onMediaPlayRequest={setPlayingVideoId}
                             renderNodeContent={renderSharedNode}
                             onMouseDown={(event, nodeId) => {
                                 event.stopPropagation();

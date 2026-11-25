@@ -106,5 +106,5 @@ export function dramaResolutionAfterModelChange(option: DramaModelOption | undef
 
 /** 视频模型能否用于作品：给得出作品画幅，尾帧续接时还要支持图生视频（tailFrameChain 为 false 时服务端不下发该字段）。 */
 export function dramaVideoOptionFits(option: DramaModelOption, aspectRatio: string, continuity: DramaVideoContinuity) {
-    return !dramaVideoRatioIssue(option, aspectRatio) && (continuity === "parallel" || Boolean(option.tailFrameChain));
+    return !dramaVideoRatioIssue(option, aspectRatio) && (continuity === "parallel" || (continuity === "reference_frame" ? Boolean(option.referenceFrameChain) : Boolean(option.tailFrameChain)));
 }

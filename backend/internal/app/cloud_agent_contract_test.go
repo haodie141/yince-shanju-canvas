@@ -519,6 +519,22 @@ func TestCloudAgentDurablePolicySnapshotRejectsMissingOrUnsupportedContracts(t *
 	if err := validateCloudAgentPolicySnapshot(legacy); err == nil {
 		t.Fatal("mixed old and new policy hashes must be rejected")
 	}
+	legacy = snapshot
+	legacy.SystemPolicyVersion, legacy.MediaPolicyVersion = 21, 21
+	legacy.SystemPolicyHash = "53e3e9546718d11eab689f40996279d3d7cbd3035396d2fce48d176c02717bbe"
+	legacy.MediaPolicyHash = "f50b0f81bd7a84a00af785fe1aed68324089916edbafc8ab14daced806840900"
+	if err := validateCloudAgentPolicySnapshot(legacy); err != nil {
+		t.Fatalf("shipped v21 run rejected: %v", err)
+	}
+	legacy.SystemPolicyHash = "d55aeb4c3d75097b36ce44b79248952c02ec91898ed0c7c4f0abd81f0691735a"
+	legacy.MediaPolicyHash = "10dbb6510b18223fc6e3494f3db0941182a7c1f2b66bb4af1eb06c5176822936"
+	if err := validateCloudAgentPolicySnapshot(legacy); err != nil {
+		t.Fatalf("shipped CRLF v21 run rejected: %v", err)
+	}
+	legacy.MediaPolicyHash = snapshot.MediaPolicyHash
+	if err := validateCloudAgentPolicySnapshot(legacy); err == nil {
+		t.Fatal("mixed v21 and current policy hashes must be rejected")
+	}
 	tests := []struct {
 		name   string
 		mutate func(*cloudAgentPolicySnapshot)

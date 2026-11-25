@@ -40,7 +40,6 @@ export async function executeImageGeneration(
         setConnections,
         setSelectedNodeIds,
         setSelectedConnectionId,
-        setDialogNodeId,
         startGenerationRequest,
         finishGenerationRequest,
         bindGenerationTask,
@@ -203,7 +202,6 @@ export async function executeImageGeneration(
     });
     setSelectedNodeIds(new Set([nodeId]));
     setSelectedConnectionId(null);
-    setDialogNodeId(nodeId);
 
     targetIds.forEach((targetId) => startGenerationRequest(targetId, nodeId, nodeId, controller));
     if (count > 1) startGenerationRequest(rootId, nodeId, nodeId, controller);

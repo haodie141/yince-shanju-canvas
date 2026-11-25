@@ -67,8 +67,9 @@ export function mergeAgentMediaBatchProgress(previous: CloudAgentMediaBatchProgr
     };
 }
 
-export function latestAgentMediaBatch(messages: readonly { mediaBatch?: CloudAgentMediaBatchProgress }[]): CloudAgentMediaBatchProgress | null {
+export function latestAgentMediaBatch(messages: readonly { id?: string; mediaBatch?: CloudAgentMediaBatchProgress }[], runId?: string): CloudAgentMediaBatchProgress | null {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (runId && !messages[index].id?.startsWith(`media-batch-${runId}-`)) continue;
         const batch = messages[index].mediaBatch;
         if (batch) return batch;
     }

@@ -12,6 +12,7 @@
   "canvas_read_batch_table",
   "canvas_read_storyboard",
   "image_text_detect",
+  "canvas_extract_video_tail",
   "image_annotation_render",
   "skill_read_file",
   "skill_search",

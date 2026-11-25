@@ -1,4 +1,4 @@
-import { AudioLines, Check, Film, Image, MessageSquareText } from "lucide-react";
+import { AudioLines, Check, Film, Image, MessageSquareText, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { ModelIcon } from "@/components/model-picker";
@@ -9,16 +9,21 @@ import { cn } from "@/lib/utils";
 import { filterModelsByCapability, modelOptionName, resolveModelChannel, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 
-type DefaultModelKey = "imageModel" | "videoModel" | "textModel" | "audioModel";
+type DefaultModelKey = "imageModel" | "videoModel" | "textModel" | "optimizerModel" | "audioModel";
 
 const groups: Array<{
     capability: ModelCapability;
     modelKey: DefaultModelKey;
     icon: typeof Image;
+    /** 独立文案前缀；缺省按能力读取 i18n。 */
+    labelKey?: string;
+    /** 允许留空，表示跟随默认文本模型。 */
+    allowFollowText?: boolean;
 }> = [
     { capability: "image", modelKey: "imageModel", icon: Image },
     { capability: "video", modelKey: "videoModel", icon: Film },
     { capability: "text", modelKey: "textModel", icon: MessageSquareText },
+    { capability: "text", modelKey: "optimizerModel", icon: Sparkles, labelKey: "account.settings.models.optimizer", allowFollowText: true },
     { capability: "audio", modelKey: "audioModel", icon: AudioLines },
 ];
 
@@ -30,23 +35,51 @@ export function ModelDefaultGrid({ config, onChange }: { config: AiConfig; onCha
             {groups.map((group) => {
                 const models = filterModelsByCapability(config.models, group.capability, config.channels);
                 const Icon = group.icon;
-                const title = t(`account.settings.models.${group.capability}.title`);
+                const labelKey = group.labelKey || `account.settings.models.${group.capability}`;
+                const title = t(`${labelKey}.title`);
+                const titleId = `default-${group.modelKey}-title`;
                 return (
-                    <section key={group.capability} className="py-5 first:pt-0 last:pb-0" aria-labelledby={`default-${group.capability}-title`}>
+                    <section key={group.modelKey} className="py-5 first:pt-0 last:pb-0" aria-labelledby={titleId}>
                         <div className="mb-3 flex items-start gap-3">
                             <span className="grid size-8 shrink-0 place-items-center rounded-md bg-surface-active text-foreground/65">
                                 <Icon className="size-4" />
                             </span>
                             <div className="min-w-0">
-                                <h3 id={`default-${group.capability}-title`} className="text-sm font-semibold">
+                                <h3 id={titleId} className="text-sm font-semibold">
                                     {title}
                                 </h3>
-                                <p className="mt-0.5 text-xs text-foreground/48">{t(`account.settings.models.${group.capability}.description`)}</p>
+                                <p className="mt-0.5 text-xs text-foreground/48">{t(`${labelKey}.description`)}</p>
                             </div>
                             <span className="ml-auto shrink-0 text-xs tabular-nums text-foreground/38">{t("account.settings.models.available", { count: models.length })}</span>
                         </div>
-                        {models.length ? (
+                        {models.length || group.allowFollowText ? (
                             <div role="radiogroup" aria-label={title} className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                {group.allowFollowText ? (
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        data-model-follow="true"
+                                        aria-checked={config[group.modelKey] === ""}
+                                        className={cn(
+                                            "model-default-option group relative overflow-hidden rounded-md px-3 py-2 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+                                            config[group.modelKey] === "" && "is-selected",
+                                        )}
+                                        onClick={() => onChange(group.modelKey, "")}
+                                    >
+                                        <span className="flex min-w-0 items-start gap-2">
+                                            <span className="model-default-option-icon grid size-8 shrink-0 place-items-center rounded-md">
+                                                <MessageSquareText className="size-4" />
+                                            </span>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block break-words text-xs font-semibold">{t("account.settings.models.optimizerFollow")}</span>
+                                                <span className="block text-[var(--fs-tiny)] text-foreground/45">{t("account.settings.models.optimizerFollowHint")}</span>
+                                            </span>
+                                            <span className={cn("model-default-option-check grid size-5 shrink-0 place-items-center rounded-full", config[group.modelKey] === "" ? "is-selected" : "text-transparent")}>
+                                                <Check className="size-3" strokeWidth={2.5} />
+                                            </span>
+                                        </span>
+                                    </button>
+                                ) : null}
                                 {models.map((model) => {
                                     const channel = resolveModelChannel(config, model);
                                     const selected = config[group.modelKey] === model;
@@ -99,7 +132,7 @@ export function ModelDefaultGrid({ config, onChange }: { config: AiConfig; onCha
                                 })}
                             </div>
                         ) : (
-                            <div className="rounded-md bg-surface-active px-4 py-6 text-center text-xs text-foreground/45">{t(`account.settings.models.${group.capability}.empty`)}</div>
+                            <div className="rounded-md bg-surface-active px-4 py-6 text-center text-xs text-foreground/45">{t(`${labelKey}.empty`)}</div>
                         )}
                     </section>
                 );

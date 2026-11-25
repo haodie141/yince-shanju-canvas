@@ -41,8 +41,12 @@ const DrawingEngineSettingsPage = lazyAdminPage(() => import("@/pages/admin/sett
 const StorageSettingsPage = lazyAdminPage(() => import("@/pages/admin/settings/storage-settings-page"));
 const ArkPrivateAssetsSettingsPage = lazyAdminPage(() => import("@/pages/admin/settings/ark-private-assets-settings-page"));
 const ResponseInterceptionSettingsPage = lazyAdminPage(() => import("@/pages/admin/settings/response-interception-settings-page"));
+const PromptModerationSettingsPage = lazyAdminPage(() => import("@/pages/admin/settings/prompt-moderation-settings-page"));
+const DefaultModelsSettingsPage = lazyAdminPage(() => import("@/pages/admin/settings/default-models-settings-page"));
+const PromptModerationLogsPage = lazyAdminPage(() => import("@/pages/admin/settings/prompt-moderation-logs-page"));
 const ThirdPartySettingsPage = lazyAdminPage(() => import("@/pages/admin/settings/libtv-settings-page"));
 const WorkbenchToolsPage = lazyAdminPage(() => import("@/pages/admin/workbench-tools/workbench-tools-page"));
+const FeaturedPage = lazyAdminPage(() => import("@/pages/admin/featured/featured-page"));
 const PoseLibraryAdminPage = lazyAdminPage(() => import("@/pages/admin/pose-library/pose-library-page"));
 const SystemUpdatePage = lazyAdminPage(() => import("@/pages/admin/settings/system-update-page"));
 const SystemPerformancePage = lazyAdminPage(() => import("@/pages/admin/settings/system-performance-page"));
@@ -256,6 +260,7 @@ export const router = createBrowserRouter([
                     { path: "ecommerce-categories", element: <Navigate to="/admin/ecommerce/library/categories" replace /> },
                     { path: "plugins", element: <AdminPluginsPage /> },
                     { path: "workbench-tools", element: <WorkbenchToolsPage /> },
+                    { path: "featured", element: <FeaturedPage /> },
                     { path: "pose-library", element: <PoseLibraryAdminPage /> },
                     { path: "skills", element: <AdminSkillsPage /> },
                     { path: "skills/:skillId/edit", element: <AdminSkillWorkbenchPage /> },
@@ -277,11 +282,14 @@ export const router = createBrowserRouter([
                     { path: "settings/concurrency", element: <Navigate to="/admin/settings/runtime-policy" replace /> },
                     { path: "settings/runtime-policy", element: <RuntimePolicySettingsPage /> },
                     { path: "settings/features", element: <FeatureAvailabilityPage /> },
+                    { path: "settings/default-models", element: <DefaultModelsSettingsPage /> },
                     { path: "settings/access", element: <AccessSettingsPage /> },
                     { path: "settings/email", element: <EmailSettingsPage /> },
                     { path: "settings/storage", element: <StorageSettingsPage /> },
                     { path: "settings/ark-private-assets", element: <ArkPrivateAssetsSettingsPage /> },
                     { path: "settings/response-interception", element: <ResponseInterceptionSettingsPage /> },
+                    { path: "settings/prompt-moderation", element: <PromptModerationSettingsPage /> },
+                    { path: "settings/prompt-moderation/logs", element: <PromptModerationLogsPage /> },
                     { path: "settings/third-party", element: <ThirdPartySettingsPage /> },
                     { path: "settings/system-update", element: <SystemUpdatePage /> },
                     { path: "settings/system-performance", element: <SystemPerformancePage /> },

@@ -199,6 +199,20 @@ func TestPromptModerationAdmissionFailsClosed(t *testing.T) {
 	if err != nil || total != 4 || len(logs) != 4 || logs[0].Username != "owner" {
 		t.Fatalf("review logs: total=%d logs=%+v err=%v", total, logs, err)
 	}
+	// 审核日志保留提示词，列表只给摘要，详情由管理员按记录 ID 读取全文。
+	if logs[0].PromptLength == 0 || logs[0].PromptPreview == "" {
+		t.Fatalf("moderation log lost prompt: %+v", logs[0])
+	}
+	detail, err := service.AdminPromptModerationLog(&model.User{ID: "admin", Role: model.UserRoleAdmin}, logs[0].ID)
+	if err != nil || strings.TrimSpace(detail.Prompt) == "" || detail.PromptLength != len([]rune(detail.Prompt)) {
+		t.Fatalf("moderation log detail: %+v %v", detail, err)
+	}
+	if _, err := service.AdminPromptModerationLog(&model.User{ID: "owner", Role: model.UserRoleUser}, logs[0].ID); err == nil {
+		t.Fatal("ordinary user can read moderation log detail")
+	}
+	if _, err := service.AdminPromptModerationLog(&model.User{ID: "admin", Role: model.UserRoleAdmin}, "missing"); err == nil {
+		t.Fatal("missing moderation log returned detail")
+	}
 	if _, _, err := service.AdminPromptModerationLogs(&model.User{ID: "owner", Role: model.UserRoleUser}, 1, 30); err == nil {
 		t.Fatal("ordinary user can read other users' moderation logs")
 	}
@@ -270,9 +284,12 @@ func TestPromptModerationLogSanitizesUpstreamError(t *testing.T) {
 	if err := db.AutoMigrate(&model.ApiCallLog{}); err != nil {
 		t.Fatal(err)
 	}
-	service.recordPromptModerationFailure("owner", "image", &AppError{Status: 503, Message: "内容审核暂不可用", Cause: providerHTTPError{StatusCode: 500, Body: "secret api key https://private.example"}})
+	service.recordPromptModerationFailure("owner", "image", "画一只猫", &AppError{Status: 503, Message: "内容审核暂不可用", Cause: providerHTTPError{StatusCode: 500, Body: "secret api key https://private.example"}})
 	logs, total, err := service.AdminPromptModerationLogs(&model.User{ID: "admin", Role: model.UserRoleAdmin}, 1, 30)
 	if err != nil || total != 1 || !strings.Contains(logs[0].Error, "HTTP 500") || strings.Contains(logs[0].Error, "secret") || strings.Contains(logs[0].Error, "private.example") {
 		t.Fatalf("unexpected review log: %+v %v", logs, err)
+	}
+	if logs[0].PromptPreview != "画一只猫" {
+		t.Fatalf("prompt preview: %q", logs[0].PromptPreview)
 	}
 }

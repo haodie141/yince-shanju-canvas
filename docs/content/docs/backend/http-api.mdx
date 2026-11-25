@@ -9,6 +9,15 @@ description: 信封、错误码与 OpenAPI
 
 创建画布分享可传 `allowCopy`；画布所有者可通过 `PATCH /api/canvas-projects/:id/share/copy-permission` 更新该设置而不改变分享有效期。关闭分享只停用分享并保留墓碑记录，用于区分“作者主动撤回”和“原画布被删除”。公开分享响应包含 `allowCopy` 和不可完整复制项 `copyIssues`。客户端检查权限与源画布，复制公开素材到当前用户资源后保存独立画布。已公开的素材本身仍可被访问，开关控制产品内的副本入口，不是防下载或数字版权保护。
 
+## 生成内容审核记录
+
+审核日志复用调用记录（`source=prompt_moderation`），记录结论、初审/复审明细与用户提示词。列表只返回提示词摘要（`promptPreview`，去换行后最多 120 字）和字数 `promptLength`；完整提示词只在管理员读取单条详情时返回，正文最多保留 20000 字，避免异常超长输入撑大调用记录。
+
+| 接口 | 入参与结果 |
+| --- | --- |
+| `GET /api/admin/settings/prompt-moderation/logs` | `page`、`pageSize`（1–100，默认 30）；返回 `logs[]`、`total`。每条包含 `promptPreview`、`promptLength`、`errorCode`、`error` 和初审/复审明细 `responseBody` |
+| `GET /api/admin/settings/prompt-moderation/logs/:id` | 返回单条 `log`，额外包含完整 `prompt`、`promptLength` 和 `responseBody`；管理员可查看任意用户的记录，非管理员 403，记录不存在或不是审核记录时 404 |
+
 ## 创作精选
 
 精选固定绑定一个画布分享快照，不跟随原画布后续修改。公开列表只返回分享仍有效、允许保存副本且视频就绪的条目；管理员列表会返回不可用条目及原因，便于修复。开启持久副本后，公开读取、视频和克隆优先使用平台副本令牌；作者误删原画布时副本继续可用，作者主动关闭分享、分享过期或禁止复制时立即下架。

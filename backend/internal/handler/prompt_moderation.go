@@ -29,6 +29,19 @@ func RegisterPromptModerationRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		ok(c, gin.H{"logs": logs, "total": total, "page": page, "pageSize": limit})
 	})
+	r.GET("/admin/settings/prompt-moderation/logs/:id", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		log, err := svc.AdminPromptModerationLog(user, c.Param("id"))
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"log": log})
+	})
 	r.GET("/admin/settings/prompt-moderation", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {
